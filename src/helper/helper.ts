@@ -224,3 +224,30 @@ export async function uploadToGCS(): Promise<void> {
     }
   }
 }
+
+const hashFile = async (filePath: string): Promise<string> => {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(filePath), hash);
+  return hash.digest("hex");
+};
+
+export const hashDirectory = async (
+  dir: string,
+): Promise<Record<string, string>> => {
+  const result: Record<string, string> = {};
+
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+
+  await Promise.all(
+    entries
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(async (entry) => {
+        if (entry.isDirectory()) return;
+
+        const fullPath = path.join(dir, entry.name);
+        result[entry.name] = await hashFile(fullPath);
+      }),
+  );
+
+  return result;
+};

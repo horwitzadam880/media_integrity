@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 
 import {
   getFileHash,
+  hashDirectory,
   parseAudioTracks,
   parseVariantStreams,
   processMedia,
@@ -47,7 +48,7 @@ async function main() {
 
     // Your specific Dropbox block list
     const shouldBlock =
-      url.includes("://dropbox.com") ||
+      url.includes("marketing.dropbox.com") ||
       url.includes("/log/") ||
       url.includes("/log_") ||
       url.includes("/alternate_wtl") ||
@@ -66,37 +67,8 @@ async function main() {
 
   const page = await context.newPage();
 
-  await page.goto("chrome://extensions");
-
-  await new Promise((res) =>
-    setTimeout(() => {
-      res(true);
-    }, 10000),
-  ); // Wait a bit before closing
-
-  //fuck
-  await page.goto("https://adblock-tester.com/");
-
   // Wait for the results to process
   await page.waitForTimeout(2000);
-
-  // Check for a high score or blocked elements (example selector)
-  const score = await page.locator(".final-score-value").innerText();
-  console.log(`AdBlock Score: ${score}`);
-
-  await context.close();
-
-  // do stuff
-  await browser.close();
-
-  console.log("done...");
-
-  await new Promise((res) =>
-    setTimeout(() => {
-      res(true);
-    }, 100000),
-  ); // Wait a bit before closing
-  // fuck
 
   const response$ = new ReplaySubject<APIResponse>();
 
@@ -194,28 +166,61 @@ async function main() {
 
   console.log("Media Files Download Finished!\nHashing files...\n");
 
-  const track1Hash = await getFileHash("audio_track1.m4a");
-  const track2Hash = await getFileHash("audio_track2.m4a");
-  const videoHash = await getFileHash("video_only.mp4");
+  const track1Hash = await getFileHash("output/media/audio_track1.m4a");
+  const track2Hash = await getFileHash("output/media/audio_track2.m4a");
+  const videoHash = await getFileHash("output/media/video_only.mp4");
   const harHash = await getFileHash("recordings/brock-footage.har");
-  const ffmpegLogHash = await getFileHash("ffmpeg-log.txt");
+  const ffmpegLogHash = await getFileHash("ouput/ffmpeg-log.txt");
 
   console.log("\nTrack 1 Hash:", track1Hash);
   console.log("\nTrack 2 Hash:", track2Hash);
   console.log("\nVideo Hash:", videoHash);
 
+  // Build HAR attachments manifest
+  const harAttachmentsHashes = await hashDirectory(
+    path.resolve(__dirname, "../output/recordings"),
+  );
+
+  const harAttachmentsManifest = {
+    files: harAttachmentsHashes,
+    name: "brock-har-attachments-manifest.json",
+  };
+
+  const harAttachmentsManifestHash = createHash("sha256")
+    .update(JSON.stringify(harAttachmentsManifest)) // hash the string you wrote
+    .digest("hex");
+
+  console.log("HAR attachments Manifest: ", harAttachmentsManifestHash);
+
+  // Build ffmpeg manifest
+  const ffmpegAttachmentsHashes = await hashDirectory(
+    path.resolve(__dirname, "../output/recordings"),
+  );
+
+  const ffmpegAttachmentsManifest = {
+    files: ffmpegAttachmentsHashes,
+    name: "ffmpeg-attachments-manifest.json",
+  };
+
+  const ffmpegAttachmentsManifestHash = createHash("sha256")
+    .update(JSON.stringify(ffmpegAttachmentsManifest)) // hash the string you wrote
+    .digest("hex");
+
+  console.log("FFMPEG attachments Manifest: ", ffmpegAttachmentsManifestHash);
+
+  // Create main hash manifest
   const manifest = {
     capturedAt: new Date().toISOString(),
-    ffmpeg_attachments_manifest: {},
     files: {
       "audio_track1.m4a": track1Hash,
       "audio_track2.m4a": track2Hash,
       "brock-footage.har": harHash,
+      "brock-har-attachments-manifest.json": harAttachmentsManifestHash,
+      "ffmpeg-attachments-manifest.json": ffmpegAttachmentsManifestHash,
       "ffmpeg-log.txt": ffmpegLogHash,
       "screenshot.png": screenshotHash,
       "video_only.mp4": videoHash,
     },
-    har_attachments_manifest: {},
     sourceUrl: BROCK_FOOTAGE_URL,
   };
 
@@ -232,6 +237,7 @@ async function main() {
   uploadToGCS().catch((err: unknown) => {
     console.error("Failed to upload to GCS:", err);
   });
+
   // MUST close context to flush HAR to disk
   await context.close();
 
