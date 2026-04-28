@@ -1,3 +1,3 @@
-2026/04/28-16:14:18.174 c09b Reusing MANIFEST /home/adam/media_integrity/src/chrome-persistent-context/Default/Local Storage/leveldb/MANIFEST-000001
-2026/04/28-16:14:18.287 c09b Recovering log #3
-2026/04/28-16:14:18.290 c09b Reusing old log /home/adam/media_integrity/src/chrome-persistent-context/Default/Local Storage/leveldb/000003.log 
+2026/04/28-18:52:19.606 d04b Reusing MANIFEST /home/adam/media_integrity/src/chrome-persistent-context/Default/Local Storage/leveldb/MANIFEST-000001
+2026/04/28-18:52:19.611 d04b Recovering log #3
+2026/04/28-18:52:19.612 d04b Reusing old log /home/adam/media_integrity/src/chrome-persistent-context/Default/Local Storage/leveldb/000003.log 

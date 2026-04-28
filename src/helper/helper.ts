@@ -251,3 +251,21 @@ export const hashDirectory = async (
 
   return result;
 };
+
+export const extractSegmentNum = (url: string): number => {
+  const match = /segment_num=(\d+)/.exec(url);
+  if (!match) throw new Error(`No segment_num in URL: ${url}`);
+  return parseInt(match[1]);
+};
+
+export const parseSegmentUrls = (m3u8Body: string): string[] =>
+  m3u8Body
+    .split("\n")
+    .filter((line) => line.startsWith("https://"))
+    .map((line) => line.trim());
+
+export interface Segment {
+  segment: number;
+  status: "complete" | "downloading" | "error" | "initial";
+  url: string;
+}

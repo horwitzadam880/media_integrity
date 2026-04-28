@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { promises as fs, writeFileSync } from "node:fs";
 import path from "node:path";
 import { type APIResponse, chromium, devices } from "playwright";
 import { lastValueFrom, ReplaySubject, throwError, timer } from "rxjs";
@@ -8,9 +8,11 @@ import { filter, retry, take, timeout, toArray } from "rxjs/operators";
 import { fileURLToPath } from "url";
 
 import {
+  extractSegmentNum,
   getFileHash,
   hashDirectory,
   parseAudioTracks,
+  parseSegmentUrls,
   parseVariantStreams,
   processMedia,
   unescapeUrl,
@@ -23,6 +25,20 @@ const BROCK_FOOTAGE_URL =
   "https://www.dropbox.com/scl/fi/soy9tt49p0x7eyoohjjpm/Brock-s-bodycam.mp4?rlkey=v6prev2pzm0b8axpltjcxczms&e=3&st=lhmaq952&dl=0";
 
 async function main() {
+  const videoMenu = await fs.readFile(
+    __dirname + "/../bak/video_playlist_example.m3u8",
+    "utf-8",
+  );
+
+  console.log(
+    "segments urls for video: ",
+    parseSegmentUrls(videoMenu).map((url) => ({
+      segment: extractSegmentNum(url),
+      status: "initial",
+      url,
+    })),
+  );
+
   console.log(process.env.GDRIVE_KEY, "!!!!");
 
   const browser = await chromium.launch();
@@ -176,6 +192,12 @@ async function main() {
   console.log("\nTrack 2 Hash:", track2Hash);
   console.log("\nVideo Hash:", videoHash);
 
+  // MUST close context to flush HAR to disk
+  await context.close();
+
+  // do stuff
+  await browser.close();
+
   // Build HAR attachments manifest
   const harAttachmentsHashes = await hashDirectory(
     path.resolve(__dirname, "../output/recordings"),
@@ -234,15 +256,9 @@ async function main() {
 
   console.log("Manifest hash:", manifestHash);
 
-  uploadToGCS().catch((err: unknown) => {
+  await uploadToGCS().catch((err: unknown) => {
     console.error("Failed to upload to GCS:", err);
   });
-
-  // MUST close context to flush HAR to disk
-  await context.close();
-
-  // do stuff
-  await browser.close();
 }
 
 void main();
