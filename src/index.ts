@@ -1,9 +1,11 @@
 import crypto from "crypto";
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
+import path from "node:path";
 import { type APIResponse, chromium, devices } from "playwright";
 import { lastValueFrom, ReplaySubject, throwError, timer } from "rxjs";
 import { filter, retry, take, timeout, toArray } from "rxjs/operators";
+import { fileURLToPath } from "url";
 
 import {
   getFileHash,
@@ -14,6 +16,8 @@ import {
   uploadToGCS,
 } from "#helper/helper.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const BROCK_FOOTAGE_URL =
   "https://www.dropbox.com/scl/fi/soy9tt49p0x7eyoohjjpm/Brock-s-bodycam.mp4?rlkey=v6prev2pzm0b8axpltjcxczms&e=3&st=lhmaq952&dl=0";
 
@@ -22,17 +26,77 @@ async function main() {
 
   const browser = await chromium.launch();
 
+  const userDataDir = path.resolve(__dirname, "chrome-persistent-context");
+
   // Create context with HAR recording BEFORE creating page
-  const context = await browser.newContext({
+  const context = await chromium.launchPersistentContext(userDataDir, {
     ...devices["Desktop Chrome"],
+    args: [
+      "--headless=new", // Mandatory for extension support in headless mode
+    ],
+    channel: "chromium",
+    headless: true, // Use '--headless=new' via args for extensions
     recordHar: {
-      content: "attach", //
-      mode: "full",
+      content: "attach",
       path: "output/recordings/brock-footage.har",
     },
   });
 
+  await context.route("**/*", (route) => {
+    const url = route.request().url();
+
+    // Your specific Dropbox block list
+    const shouldBlock =
+      url.includes("://dropbox.com") ||
+      url.includes("/log/") ||
+      url.includes("/log_") ||
+      url.includes("/alternate_wtl") ||
+      url.includes("/2/udcl/") ||
+      url.includes("/2/client_metrics/") ||
+      url.includes("/pro_events");
+
+    if (shouldBlock) {
+      console.log(`>> BLOCKED: ${url}`);
+      return route.abort();
+    }
+
+    // Otherwise, let the request through
+    return route.continue();
+  });
+
   const page = await context.newPage();
+
+  await page.goto("chrome://extensions");
+
+  await new Promise((res) =>
+    setTimeout(() => {
+      res(true);
+    }, 10000),
+  ); // Wait a bit before closing
+
+  //fuck
+  await page.goto("https://adblock-tester.com/");
+
+  // Wait for the results to process
+  await page.waitForTimeout(2000);
+
+  // Check for a high score or blocked elements (example selector)
+  const score = await page.locator(".final-score-value").innerText();
+  console.log(`AdBlock Score: ${score}`);
+
+  await context.close();
+
+  // do stuff
+  await browser.close();
+
+  console.log("done...");
+
+  await new Promise((res) =>
+    setTimeout(() => {
+      res(true);
+    }, 100000),
+  ); // Wait a bit before closing
+  // fuck
 
   const response$ = new ReplaySubject<APIResponse>();
 
