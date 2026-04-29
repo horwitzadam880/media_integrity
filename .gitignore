@@ -1,4 +1,6 @@
-output/
+output/**
+
+chrome-persistent-content/
 
 ublock-lite-extension/
 
