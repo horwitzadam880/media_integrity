@@ -40,6 +40,11 @@ export interface VariantStream {
   uri: string;
 }
 
+export async function createOutputFolders() {
+  await execAsync("rm -rf output");
+  await execAsync("mkdir -p output/media output/recordings");
+}
+
 export async function getFileHash(filePath: string): Promise<string> {
   const hash = createHash("sha256");
   const fileStream = createReadStream(filePath);
@@ -101,13 +106,16 @@ export function parseVariantStreams(text: string): VariantStream[] {
   return streams;
 }
 
+const rootOutputDir = path.join(process.cwd(), "output");
+
 export async function processMedia(
   videoUrl: string,
   audioUrl1: string,
   audioUrl2: string,
 ) {
-  // Arguments are an array. No need to wrap URLs in extra quotes here!
   const args = [
+    "-http_proxy",
+    "http://127.0.0.1:9898",
     "-loglevel",
     "debug",
     "-i",
@@ -120,17 +128,17 @@ export async function processMedia(
     "0:v",
     "-c",
     "copy",
-    "output/media/video_only.mp4",
+    path.join(rootOutputDir, "media", "video_only.mp4"),
     "-map",
     "1:a",
     "-c",
     "copy",
-    "output/media/audio_track1.m4a",
+    path.join(rootOutputDir, "media", "audio_track1.m4a"),
     "-map",
     "2:a",
     "-c",
     "copy",
-    "output/media/audio_track2.m4a",
+    path.join(rootOutputDir, "media", "audio_track2.m4a"),
     "-map",
     "0:v",
     "-map",
@@ -139,13 +147,15 @@ export async function processMedia(
     "2:a",
     "-c",
     "copy",
-    "output/media/final_combined.mp4",
+    path.join(rootOutputDir, "media", "final_combined.mp4"),
   ];
 
   const ffmpeg = spawn("ffmpeg", args);
 
   // Optional: Stream the logs to a file so you can debug if it fails
-  const logStream = createWriteStream("./output/ffmpeg-log.txt");
+  const logStream = createWriteStream(
+    path.join(rootOutputDir, "ffmpeg-log.txt"),
+  );
 
   // Handle FFmpeg output and errors
   pipeline(ffmpeg.stderr, logStream).catch((err: unknown) => {

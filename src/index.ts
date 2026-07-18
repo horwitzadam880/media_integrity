@@ -1,6 +1,8 @@
 import crypto from "crypto";
+// import { exec, spawn } from "node:child_process/promises";
 import { createHash } from "node:crypto";
-import { promises as fs, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import * as http from "node:http"; // Added native http server modules
 import path from "node:path";
 import { type APIResponse, chromium, devices } from "playwright";
 import { lastValueFrom, ReplaySubject, throwError, timer } from "rxjs";
@@ -8,42 +10,64 @@ import { filter, retry, take, timeout, toArray } from "rxjs/operators";
 import { fileURLToPath } from "url";
 
 import {
-  extractSegmentNum,
+  createOutputFolders,
+  // extractSegmentNum,
   getFileHash,
   hashDirectory,
   parseAudioTracks,
-  parseSegmentUrls,
+  // parseSegmentUrls,
   parseVariantStreams,
   processMedia,
   unescapeUrl,
   uploadToGCS,
 } from "#helper/helper.js";
 
+let remappedURIs = {
+  hd1152_864: "",
+  track1_192k: "",
+  track2: "",
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BROCK_FOOTAGE_URL =
+  "https://www.dropbox.com/scl/fo/b85f1jqi0xi86ocn425jq/AFP1l5lCBonN8eXwrRcDdpU/NEW%20-%20TRUCK%20RAMMING%20GATE%20AND%20NIGHTSTICK%20FOOTAGE/UPDATED%20-%20Truck%20and%20Nightstick%20Footage%20-%204.20.26.mp4?rlkey=qul8wibhidoam8ps6xv9ugc2m&e=1&dl=0";
+// const BROCK_FOOTAGE_URL_OLD =
+//   "https://www.dropbox.com/scl/fo/b85f1jqi0xi86ocn425jq/AJgUHhqCf98FDJhkqWnDWv8/NEW%20-%20TRUCK%20RAMMING%20GATE%20AND%20NIGHTSTICK%20FOOTAGE?dl=0&preview=UPDATED+-+Truck+and+Nightstick+Footage+-+4.20.26.mp4&rlkey=qul8wibhidoam8ps6xv9ugc2m&subfolder_nav_tracking=1";
+
+const BROCK_FOOTAGE_URL_ACTUAL =
   "https://www.dropbox.com/scl/fi/soy9tt49p0x7eyoohjjpm/Brock-s-bodycam.mp4?rlkey=v6prev2pzm0b8axpltjcxczms&e=3&st=lhmaq952&dl=0";
 
+console.log("BROCK_FOOTAGE_URL_ACTUAL: ", BROCK_FOOTAGE_URL_ACTUAL);
+
 async function main() {
-  const videoMenu = await fs.readFile(
-    __dirname + "/../bak/video_playlist_example.m3u8",
-    "utf-8",
-  );
+  // const videoMenu = await fs.readFile(
+  //   __dirname + "/../bak/video_playlist_example.m3u8",
+  //   "utf-8",
+  // );
 
-  console.log(
-    "segments urls for video: ",
-    parseSegmentUrls(videoMenu).map((url) => ({
-      segment: extractSegmentNum(url),
-      status: "initial",
-      url,
-    })),
-  );
+  // console.log(
+  //   "segments urls for video: ",
+  //   parseSegmentUrls(videoMenu).map((url) => ({
+  //     segment: extractSegmentNum(url),
+  //     status: "initial",
+  //     url,
+  //   })),
+  // );
 
-  console.log(process.env.GDRIVE_KEY, "!!!!");
+  await createOutputFolders();
 
+  // console.log(process.env.GDRIVE_KEY, "!!!!");
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const browser = await chromium.launch();
 
-  const userDataDir = path.resolve(__dirname, "chrome-persistent-context");
+  const rootOutputDir = path.join(process.cwd(), "output");
+
+  const userDataDir = path.resolve(
+    __dirname,
+    "../output/chrome-persistent-context",
+  );
 
   // Create context with HAR recording BEFORE creating page
   const context = await chromium.launchPersistentContext(userDataDir, {
@@ -55,7 +79,7 @@ async function main() {
     headless: true, // Use '--headless=new' via args for extensions
     recordHar: {
       content: "attach",
-      path: "output/recordings/brock-footage.har",
+      path: path.join(rootOutputDir, "recordings", "brock-footage.har"),
     },
   });
 
@@ -73,7 +97,7 @@ async function main() {
       url.includes("/pro_events");
 
     if (shouldBlock) {
-      console.log(`>> BLOCKED: ${url}`);
+      //   console.log(`>> BLOCKED: ${url}`);
       return route.abort();
     }
 
@@ -83,8 +107,80 @@ async function main() {
 
   const page = await context.newPage();
 
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
+  const proxyServer = http.createServer(async (req, res) => {
+    if (!req.url) {
+      res.writeHead(400);
+      return res.end();
+    }
+
+    try {
+      // 1. Pass the absolute string directly into Node's native URL parser
+      const urlObj = new URL(req.url);
+
+      // 2. Change the protocol back to secure HTTPS for Playwright
+      if (urlObj.protocol === "http:") {
+        urlObj.protocol = "https:";
+      }
+
+      // 3. 🛡️ THE PROTOCOL PORT FIX:
+      // If FFmpeg baked port 80 into the address, clear it out.
+      // This forces Playwright to default to safe TLS channels (Port 443).
+      if (urlObj.port === "80") {
+        urlObj.port = "";
+      }
+
+      const secureTargetUrl = urlObj.toString();
+      const playwrightResponse = await context.request.fetch(secureTargetUrl, {
+        method: "GET",
+      });
+
+      const contentType = (
+        playwrightResponse.headers()["content-type"] || ""
+      ).toLowerCase();
+      let bodyBuffer = await playwrightResponse.body();
+
+      // 4. 🌟 THE CRITICAL FIX: Bulk scan and strip ALL secure protocol strings
+      // out of the streaming text contents (.m3u8 index files, sub-playlists, etc.)
+      if (
+        secureTargetUrl.includes(".m3u8") ||
+        secureTargetUrl.includes("m3u8") ||
+        contentType.includes("mpegurl") ||
+        contentType.includes("text/") ||
+        contentType.includes("application/x-mpegurl")
+      ) {
+        let textData = bodyBuffer.toString("utf-8");
+
+        // Force every hidden asset link inside the playlist text to use plain HTTP.
+        // This ensures FFmpeg NEVER drops the proxy or switches back to direct HTTPS mode.
+        textData = textData.replace(/https:\/\//g, "http://");
+
+        bodyBuffer = Buffer.from(textData, "utf-8");
+      }
+
+      // 5. Send payload back down to FFmpeg's buffer
+      res.writeHead(playwrightResponse.status(), playwrightResponse.headers());
+      res.end(bodyBuffer);
+    } catch (err) {
+      console.log(err);
+
+      console.error("Internal HAR Injection Proxy Routing Error:", err);
+      res.writeHead(502);
+      res.end();
+    }
+  });
+
+  // Assign an ephemeral localhost port for the proxy loopback tunnel
+  const PROXY_PORT = 9898;
+  await new Promise<void>((resolve) =>
+    proxyServer.listen(PROXY_PORT, "127.0.0.1", resolve),
+  );
+  console.log(
+    `HAR Integration proxy server tracking on loopback port: ${String(PROXY_PORT)}`,
+  );
+
   // Wait for the results to process
-  await page.waitForTimeout(2000);
+  //   await page.waitForTimeout(2000);
 
   const response$ = new ReplaySubject<APIResponse>();
 
@@ -94,9 +190,11 @@ async function main() {
     void route.fulfill({ response });
   });
 
-  await page.goto(BROCK_FOOTAGE_URL);
+  await page.goto(BROCK_FOOTAGE_URL, { timeout: 6000000 });
 
-  const screenshot = await page.screenshot({ path: "screenshot.png" });
+  const screenshot = await page.screenshot({
+    path: path.join(rootOutputDir, "screenshot.png"),
+  });
 
   const screenshotHash = crypto
     .createHash("sha256")
@@ -148,7 +246,7 @@ async function main() {
 
   // Usage: select by resolution or name
   const streams = parseVariantStreams(m3u8Responses[0].text);
-  const hd1152_864 = streams.find((s) => s.resolution === "1152x864");
+  const hd1152_864 = streams.find((s) => s.resolution === "720x576"); // 1152x864
 
   console.log(
     "Video stream playlist: ",
@@ -161,7 +259,7 @@ async function main() {
 
   // Select Track 2 from 128k
   const track2 = audioTracks.find(
-    (t) => t.name === "Track 2" && t.bitrate === 128,
+    (t) => t.name === "Track 1" && t.bitrate === 128, // change back to 2 later!!!
   );
 
   // Select Track 1 from 192k
@@ -174,19 +272,38 @@ async function main() {
 
   console.log("Creating media artifacts...\n");
 
+  remappedURIs = {
+    hd1152_864: unescapeUrl(String(hd1152_864?.uri)).replace(
+      /^https:/i,
+      "http:",
+    ),
+    track1_192k: unescapeUrl(String(track1_192k?.uri)).replace(
+      /^https:/i,
+      "http:",
+    ),
+    track2: unescapeUrl(String(track2?.uri)).replace(/^https:/i, "http:"),
+  };
+
   await processMedia(
-    unescapeUrl(String(hd1152_864?.uri)),
-    unescapeUrl(String(track1_192k?.uri)),
-    unescapeUrl(String(track2?.uri)),
+    remappedURIs.hd1152_864,
+    remappedURIs.track1_192k,
+    remappedURIs.track2,
   );
 
   console.log("Media Files Download Finished!\nHashing files...\n");
 
-  const track1Hash = await getFileHash("output/media/audio_track1.m4a");
-  const track2Hash = await getFileHash("output/media/audio_track2.m4a");
-  const videoHash = await getFileHash("output/media/video_only.mp4");
-  const harHash = await getFileHash("recordings/brock-footage.har");
-  const ffmpegLogHash = await getFileHash("ouput/ffmpeg-log.txt");
+  const track1Hash = await getFileHash(
+    path.join(rootOutputDir, "media", "audio_track1.m4a"),
+  );
+  const track2Hash = await getFileHash(
+    path.join(rootOutputDir, "media", "audio_track2.m4a"),
+  );
+  const videoHash = await getFileHash(
+    path.join(rootOutputDir, "media", "video_only.mp4"),
+  );
+  const ffmpegLogHash = await getFileHash(
+    path.join(rootOutputDir, "ffmpeg-log.txt"),
+  );
 
   console.log("\nTrack 1 Hash:", track1Hash);
   console.log("\nTrack 2 Hash:", track2Hash);
@@ -195,12 +312,13 @@ async function main() {
   // MUST close context to flush HAR to disk
   await context.close();
 
-  // do stuff
-  await browser.close();
+  const harHash = await getFileHash(
+    path.join(rootOutputDir, "recordings", "brock-footage.har"),
+  );
 
   // Build HAR attachments manifest
   const harAttachmentsHashes = await hashDirectory(
-    path.resolve(__dirname, "../output/recordings"),
+    path.join(rootOutputDir, "recordings"),
   );
 
   const harAttachmentsManifest = {
@@ -214,22 +332,6 @@ async function main() {
 
   console.log("HAR attachments Manifest: ", harAttachmentsManifestHash);
 
-  // Build ffmpeg manifest
-  const ffmpegAttachmentsHashes = await hashDirectory(
-    path.resolve(__dirname, "../output/recordings"),
-  );
-
-  const ffmpegAttachmentsManifest = {
-    files: ffmpegAttachmentsHashes,
-    name: "ffmpeg-attachments-manifest.json",
-  };
-
-  const ffmpegAttachmentsManifestHash = createHash("sha256")
-    .update(JSON.stringify(ffmpegAttachmentsManifest)) // hash the string you wrote
-    .digest("hex");
-
-  console.log("FFMPEG attachments Manifest: ", ffmpegAttachmentsManifestHash);
-
   // Create main hash manifest
   const manifest = {
     capturedAt: new Date().toISOString(),
@@ -238,7 +340,6 @@ async function main() {
       "audio_track2.m4a": track2Hash,
       "brock-footage.har": harHash,
       "brock-har-attachments-manifest.json": harAttachmentsManifestHash,
-      "ffmpeg-attachments-manifest.json": ffmpegAttachmentsManifestHash,
       "ffmpeg-log.txt": ffmpegLogHash,
       "screenshot.png": screenshotHash,
       "video_only.mp4": videoHash,
@@ -248,7 +349,18 @@ async function main() {
 
   const manifestString = JSON.stringify(manifest, null, 2);
 
-  writeFileSync("./output/manifest.json", manifestString);
+  const harAttachmentsManifestString = JSON.stringify(
+    harAttachmentsManifest,
+    null,
+    2,
+  );
+
+  writeFileSync(path.join(rootOutputDir, "manifest.json"), manifestString);
+
+  writeFileSync(
+    path.join(rootOutputDir, "brock-har-attachments-manifest.json"),
+    harAttachmentsManifestString,
+  );
 
   const manifestHash = createHash("sha256")
     .update(manifestString) // hash the string you wrote
@@ -259,6 +371,10 @@ async function main() {
   await uploadToGCS().catch((err: unknown) => {
     console.error("Failed to upload to GCS:", err);
   });
+
+  console.log("All tasks completed successfully.\n");
+
+  console.log("Manifest hash:", manifestHash);
 }
 
 void main();
