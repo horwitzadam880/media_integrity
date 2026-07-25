@@ -75,7 +75,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY }}/${{ steps.string.outputs.IMAGE_ID }}:latest
+          tags: |
+            ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
+            ghcr.io/horwitzadam880/media_integrity:latest
           # These cache lines drastically reduce your workflow build times on subsequent runs
           cache-from: type=gha # Before I waste time building anything, let me check GitHub's cache to see if these exact Dockerfile layers were already built in a previous run. If they match, I'll instantly download them instead of compiling them again
           cache-to: type=gha,mode=max # Once the build finishes, export and upload every single layer—including the deep, intermediate build stages (mode=max)—back to GitHub's storage so the next pipeline run can use them.
