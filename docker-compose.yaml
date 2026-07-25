@@ -1,0 +1,14 @@
+version: "5.3.1"
+services:
+  app:
+    image: forensic-scraper:latest
+    privileged: true
+    cap_add: # Adds special system privileges to the container.
+      - NET_ADMIN # Required for tcpdump to attach to the interface
+      - NET_RAW # Grants raw socket access
+    networks: # Assigns the container to a specific network group.
+      - secure_forensics_net
+
+networks:
+  secure_forensics_net:
+    driver: bridge # Forces a clean single bridge network
