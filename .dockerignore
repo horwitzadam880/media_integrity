@@ -1,0 +1,4 @@
+# .dockerignore
+output
+.git
+node_modules

@@ -1,5 +1,4 @@
 import crypto from "crypto";
-// import { exec, spawn } from "node:child_process/promises";
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import * as http from "node:http"; // Added native http server modules
@@ -10,23 +9,19 @@ import { filter, retry, take, timeout, toArray } from "rxjs/operators";
 import { fileURLToPath } from "url";
 
 import {
+  compressChromeContext,
   createOutputFolders,
-  // extractSegmentNum,
+  getExternalIPAddress,
   getFileHash,
   hashDirectory,
   parseAudioTracks,
-  // parseSegmentUrls,
   parseVariantStreams,
   processMedia,
+  startTCPDump,
+  stopTCPDump,
   unescapeUrl,
   uploadToGCS,
-} from "#helper/helper.js";
-
-let remappedURIs = {
-  hd1152_864: "",
-  track1_192k: "",
-  track2: "",
-};
+} from "./helper/helper.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,24 +35,12 @@ const BROCK_FOOTAGE_URL_ACTUAL =
 
 console.log("BROCK_FOOTAGE_URL_ACTUAL: ", BROCK_FOOTAGE_URL_ACTUAL);
 
+process.env.SSLKEYLOGFILE = "/forensic_scraper/output/ssl_keys.log";
+
 async function main() {
-  // const videoMenu = await fs.readFile(
-  //   __dirname + "/../bak/video_playlist_example.m3u8",
-  //   "utf-8",
-  // );
-
-  // console.log(
-  //   "segments urls for video: ",
-  //   parseSegmentUrls(videoMenu).map((url) => ({
-  //     segment: extractSegmentNum(url),
-  //     status: "initial",
-  //     url,
-  //   })),
-  // );
-
   await createOutputFolders();
 
-  // console.log(process.env.GDRIVE_KEY, "!!!!");
+  await startTCPDump();
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const browser = await chromium.launch();
@@ -107,6 +90,8 @@ async function main() {
 
   const page = await context.newPage();
 
+  const resBodies: { originalBodyText: string; url: string }[] = [];
+
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   const proxyServer = http.createServer(async (req, res) => {
     if (!req.url) {
@@ -131,6 +116,7 @@ async function main() {
       }
 
       const secureTargetUrl = urlObj.toString();
+
       const playwrightResponse = await context.request.fetch(secureTargetUrl, {
         method: "GET",
       });
@@ -138,6 +124,7 @@ async function main() {
       const contentType = (
         playwrightResponse.headers()["content-type"] || ""
       ).toLowerCase();
+
       let bodyBuffer = await playwrightResponse.body();
 
       // 4. 🌟 THE CRITICAL FIX: Bulk scan and strip ALL secure protocol strings
@@ -151,9 +138,16 @@ async function main() {
       ) {
         let textData = bodyBuffer.toString("utf-8");
 
-        // Force every hidden asset link inside the playlist text to use plain HTTP.
-        // This ensures FFmpeg NEVER drops the proxy or switches back to direct HTTPS mode.
-        textData = textData.replace(/https:\/\//g, "http://");
+        if (textData.includes("https://")) {
+          resBodies.push({
+            originalBodyText: textData,
+            url: secureTargetUrl,
+          });
+
+          // Force every hidden asset link inside the playlist text to use plain HTTP.
+          // This ensures FFmpeg NEVER drops the proxy or switches back to direct HTTPS mode.
+          textData = textData.replace(/https:\/\//g, "http://");
+        }
 
         bodyBuffer = Buffer.from(textData, "utf-8");
       }
@@ -172,9 +166,11 @@ async function main() {
 
   // Assign an ephemeral localhost port for the proxy loopback tunnel
   const PROXY_PORT = 9898;
+
   await new Promise<void>((resolve) =>
     proxyServer.listen(PROXY_PORT, "127.0.0.1", resolve),
   );
+
   console.log(
     `HAR Integration proxy server tracking on loopback port: ${String(PROXY_PORT)}`,
   );
@@ -189,6 +185,8 @@ async function main() {
     response$.next(response);
     void route.fulfill({ response });
   });
+
+  const externalIPAddress = await getExternalIPAddress();
 
   await page.goto(BROCK_FOOTAGE_URL, { timeout: 6000000 });
 
@@ -246,6 +244,7 @@ async function main() {
 
   // Usage: select by resolution or name
   const streams = parseVariantStreams(m3u8Responses[0].text);
+
   const hd1152_864 = streams.find((s) => s.resolution === "720x576"); // 1152x864
 
   console.log(
@@ -272,7 +271,7 @@ async function main() {
 
   console.log("Creating media artifacts...\n");
 
-  remappedURIs = {
+  const remappedURIs = {
     hd1152_864: unescapeUrl(String(hd1152_864?.uri)).replace(
       /^https:/i,
       "http:",
@@ -288,6 +287,7 @@ async function main() {
     remappedURIs.hd1152_864,
     remappedURIs.track1_192k,
     remappedURIs.track2,
+    rootOutputDir,
   );
 
   console.log("Media Files Download Finished!\nHashing files...\n");
@@ -295,12 +295,19 @@ async function main() {
   const track1Hash = await getFileHash(
     path.join(rootOutputDir, "media", "audio_track1.m4a"),
   );
+
   const track2Hash = await getFileHash(
     path.join(rootOutputDir, "media", "audio_track2.m4a"),
   );
+
   const videoHash = await getFileHash(
     path.join(rootOutputDir, "media", "video_only.mp4"),
   );
+
+  const finalVideoCombinedHash = await getFileHash(
+    path.join(rootOutputDir, "media", "final_combined.mp4"),
+  );
+
   const ffmpegLogHash = await getFileHash(
     path.join(rootOutputDir, "ffmpeg-log.txt"),
   );
@@ -312,6 +319,25 @@ async function main() {
   // MUST close context to flush HAR to disk
   await context.close();
 
+  await stopTCPDump();
+
+  await compressChromeContext();
+
+  const networkCaptureHash = await getFileHash(
+    path.join(rootOutputDir, "network_capture.pcap"),
+  );
+
+  const tcpdump_consoleLogHash = await getFileHash(
+    path.join(rootOutputDir, "tcpdump_console.log"),
+  );
+
+  const sslKeysLogHash = await getFileHash(
+    path.join(rootOutputDir, "ssl_keys.log"),
+  );
+  const chromeContextHash = await getFileHash(
+    path.join(rootOutputDir, "chrome-persistent-context.tar.gz"),
+  );
+
   const harHash = await getFileHash(
     path.join(rootOutputDir, "recordings", "brock-footage.har"),
   );
@@ -321,16 +347,33 @@ async function main() {
     path.join(rootOutputDir, "recordings"),
   );
 
-  const harAttachmentsManifest = {
-    files: harAttachmentsHashes,
-    name: "brock-har-attachments-manifest.json",
-  };
+  writeFileSync(
+    path.join(rootOutputDir, "brock-har-attachments-manifest.json"),
+    JSON.stringify(
+      {
+        files: harAttachmentsHashes,
+        name: "brock-har-attachments-manifest.json",
+      },
+      null,
+      2,
+    ),
+  );
 
-  const harAttachmentsManifestHash = createHash("sha256")
-    .update(JSON.stringify(harAttachmentsManifest)) // hash the string you wrote
-    .digest("hex");
+  const harAttachmentsManifestHash = await getFileHash(
+    path.join(rootOutputDir, "brock-har-attachments-manifest.json"),
+  );
 
   console.log("HAR attachments Manifest: ", harAttachmentsManifestHash);
+
+  //Build ffmpeg mapped response bodies
+  writeFileSync(
+    path.join(rootOutputDir, "ffmpeg-mapped-response-bodies.json"),
+    JSON.stringify(resBodies, null, 2),
+  );
+
+  const ffmpegMappedResBodiesHash = await getFileHash(
+    path.join(rootOutputDir, "ffmpeg-mapped-response-bodies.json"),
+  );
 
   // Create main hash manifest
   const manifest = {
@@ -340,27 +383,23 @@ async function main() {
       "audio_track2.m4a": track2Hash,
       "brock-footage.har": harHash,
       "brock-har-attachments-manifest.json": harAttachmentsManifestHash,
+      "chrome-persistent-context.tar.gz": chromeContextHash,
       "ffmpeg-log.txt": ffmpegLogHash,
+      "ffmpeg-mapped-response-bodies.json": ffmpegMappedResBodiesHash,
+      "final_combined.mp4": finalVideoCombinedHash,
+      "network_capture.pcap": networkCaptureHash,
       "screenshot.png": screenshotHash,
+      "ssl_keys.log": sslKeysLogHash,
+      "tcpdump_console.log": tcpdump_consoleLogHash,
       "video_only.mp4": videoHash,
     },
+    ipAddress: externalIPAddress,
     sourceUrl: BROCK_FOOTAGE_URL,
   };
 
   const manifestString = JSON.stringify(manifest, null, 2);
 
-  const harAttachmentsManifestString = JSON.stringify(
-    harAttachmentsManifest,
-    null,
-    2,
-  );
-
   writeFileSync(path.join(rootOutputDir, "manifest.json"), manifestString);
-
-  writeFileSync(
-    path.join(rootOutputDir, "brock-har-attachments-manifest.json"),
-    harAttachmentsManifestString,
-  );
 
   const manifestHash = createHash("sha256")
     .update(manifestString) // hash the string you wrote
