@@ -48,7 +48,7 @@ export async function compressChromeContext() {
 }
 
 export async function createOutputFolders() {
-  await execAsync("rm -rf output");
+  // await execAsync("rm -rf output");
   await execAsync("mkdir -p output/media output/recordings");
 }
 

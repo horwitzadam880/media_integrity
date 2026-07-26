@@ -1,14 +1,20 @@
-version: "5.3.1"
+# docker-compose.yml
 services:
   app:
     image: forensic-scraper:latest
-    privileged: true
-    cap_add: # Adds special system privileges to the container.
+    # privileged: true
+    cap_add:
       - NET_ADMIN # Required for tcpdump to attach to the interface
       - NET_RAW # Grants raw socket access
-    networks: # Assigns the container to a specific network group.
+    networks:
       - secure_forensics_net
+    volumes:
+      - ./output:/forensic_scraper/output
 
-networks:
+networks: # Assigns the container to a specific network group.
   secure_forensics_net:
     driver: bridge # Forces a clean single bridge network
+
+
+    # ipc: host
+    # init: true
