@@ -85,3 +85,24 @@ jobs:
           # These cache lines drastically reduce your workflow build times on subsequent runs
           cache-from: type=gha # Before I waste time building anything, let me check GitHub's cache to see if these exact Dockerfile layers were already built in a previous run. If they match, I'll instantly download them instead of compiling them again
           cache-to: type=gha,mode=max # Once the build finishes, export and upload every single layer—including the deep, intermediate build stages (mode=max)—back to GitHub's storage so the next pipeline run can use them.
+
+  run-scraper:
+    runs-on: ubuntu-latest
+    #ubuntu-latest -- previous
+
+    steps:
+      - name: Create Runtime Environment File
+        env:
+          GDRIVE_KEY: ${{ secrets.GDRIVE_KEY }}
+        run: echo "GDRIVE_KEY='${GDRIVE_KEY}'" > .env
+
+      - name: Prepare Output Directory
+        run: mkdir -p output
+
+      - name: Run Scraper via Docker Compose
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.prod.yml \
+            --env-file .env \
+            up --no-build --abort-on-container-exit
