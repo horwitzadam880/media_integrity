@@ -1,0 +1,9 @@
+# docker-compose.prod.yml
+services:
+  app:
+    image: ghcr.io/horwitzadam880/media_integrity:latest
+    environment:
+      - ENVIRONMENT=production
+      - GDRIVE_KEY=${GDRIVE_KEY}
+    ipc: host
+    init: true

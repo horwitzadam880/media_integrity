@@ -18,7 +18,7 @@ RUN echo 'Acquire::https::snapshot.ubuntu.com::Verify-Peer "false";' > /etc/apt/
     && apt install -y ca-certificates \
     && rm /etc/apt/apt.conf.d/80snapshot-noverify \
     && apt clean && apt update \
-    && apt install -y curl gpg ffmpeg tcpdump bind9-dnsutils
+    && apt install -y curl gpg ffmpeg tcpdump bind9-dnsutils iproute2
 
 # Google Cloud 
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
