@@ -128,7 +128,7 @@ jobs:
       - name: Run Scraper via Docker Compose
         run: |
           # 1. Run the containers in detached background mode so the shell stays alive
-          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml --env-file .env up -d --no-build --abort-on-container-exit
+          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml --env-file .env up -d --no-build
 
           # 2. Force the runner shell to wait interactively until the app container naturally finishes
           # (Replace "app" with whatever service name your scraper uses inside your docker-compose file)
