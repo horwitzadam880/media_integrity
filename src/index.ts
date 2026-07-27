@@ -21,7 +21,7 @@ import {
   stopTCPDump,
   unescapeUrl,
   uploadToGCS,
-} from "#helper/helper.js";
+} from "#helper/helper";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

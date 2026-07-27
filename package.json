@@ -4,10 +4,13 @@
   "description": "",
   "type": "module",
   "imports": {
-    "#*": "./src/*"
+    "#helper/*": {
+      "development": "./src/helper/*.ts",
+      "default": "./dist/helper/*.js"
+    }
   },
   "scripts": {
-    "dev": "tsx --watch --env-file .env src/index.ts",
+    "dev": "NODE_OPTIONS=--conditions=development tsx --watch --env-file .env src/index.ts",
     "start": "node --env-file .env dist/index.js",
     "build": "tsc -p tsconfig.build.json",
     "type-check": "tsc --noEmit",
