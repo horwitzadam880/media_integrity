@@ -117,13 +117,28 @@ jobs:
       - name: Prepare Output Directory
         run: mkdir -p output
 
+      # - name: Run Scraper via Docker Compose
+      #   run: |
+      #     docker compose \
+      #       -f docker-compose.yaml \
+      #       -f docker-compose.prod.yaml \
+      #       --env-file .env \
+      #       up --no-build --abort-on-container-exit
+
       - name: Run Scraper via Docker Compose
         run: |
-          docker compose \
-            -f docker-compose.yaml \
-            -f docker-compose.prod.yaml \
-            --env-file .env \
-            up --no-build --abort-on-container-exit
+          # 1. Run the containers in detached background mode so the shell stays alive
+          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml --env-file .env up -d --no-build
+
+          # 2. Force the runner shell to wait interactively until the app container naturally finishes
+          # (Replace "app" with whatever service name your scraper uses inside your docker-compose file)
+          docker wait $(docker compose ps -q app)
+
+          # 3. Clean up the container stack safely
+          docker compose -f docker-compose.yaml -f docker-compose.prod.yml down
+
+      - name: Fix File Permissions for Attestation Engine
+        run: sudo chown -R $USER:$USER output/
 
       - name: Generate Authenticated Build Provenance
         uses: actions/attest-build-provenance@v2
