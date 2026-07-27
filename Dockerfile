@@ -45,7 +45,7 @@ WORKDIR /forensic_scraper
 COPY . .
 
 RUN npm ci \
-    && npx playwright install --with-deps chromium 
+    && npx playwright install --with-deps chromium \
     && npm run build
 
 
