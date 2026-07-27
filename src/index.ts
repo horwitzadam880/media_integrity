@@ -21,7 +21,7 @@ import {
   stopTCPDump,
   unescapeUrl,
   uploadToGCS,
-} from "#helper/helper";
+} from "#helper/helper.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,7 +40,6 @@ async function main() {
 
   await startTCPDump();
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const browser = await chromium.launch();
 
   const rootOutputDir = path.join(process.cwd(), "output");
@@ -409,6 +408,8 @@ async function main() {
   console.log("All tasks completed successfully.\n");
 
   console.log("Manifest hash:", manifestHash);
+
+  await browser.close();
 }
 
 void main();
