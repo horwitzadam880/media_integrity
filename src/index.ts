@@ -25,14 +25,11 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// const BROCK_FOOTAGE_URL_TEST =
-//   "https://www.dropbox.com/scl/fo/b85f1jqi0xi86ocn425jq/AFP1l5lCBonN8eXwrRcDdpU/NEW%20-%20TRUCK%20RAMMING%20GATE%20AND%20NIGHTSTICK%20FOOTAGE/UPDATED%20-%20Truck%20and%20Nightstick%20Footage%20-%204.20.26.mp4?rlkey=qul8wibhidoam8ps6xv9ugc2m&e=1&dl=0";
+const BROCK_FOOTAGE_URL = // test
+  "https://www.dropbox.com/scl/fo/b85f1jqi0xi86ocn425jq/AFP1l5lCBonN8eXwrRcDdpU/NEW%20-%20TRUCK%20RAMMING%20GATE%20AND%20NIGHTSTICK%20FOOTAGE/UPDATED%20-%20Truck%20and%20Nightstick%20Footage%20-%204.20.26.mp4?rlkey=qul8wibhidoam8ps6xv9ugc2m&e=1&dl=0";
 
-// const BROCK_FOOTAGE_URL =
-// "https://www.dropbox.com/scl/fo/b85f1jqi0xi86ocn425jq/AJgUHhqCf98FDJhkqWnDWv8/NEW%20-%20TRUCK%20RAMMING%20GATE%20AND%20NIGHTSTICK%20FOOTAGE?dl=0&preview=UPDATED+-+Truck+and+Nightstick+Footage+-+4.20.26.mp4&rlkey=qul8wibhidoam8ps6xv9ugc2m&subfolder_nav_tracking=1";
-
-const BROCK_FOOTAGE_URL =
-  "https://www.dropbox.com/scl/fi/soy9tt49p0x7eyoohjjpm/Brock-s-bodycam.mp4?rlkey=v6prev2pzm0b8axpltjcxczms&e=3&st=lhmaq952&dl=0";
+// const BROCK_FOOTAGE_URL = // actual
+//   "https://www.dropbox.com/scl/fi/soy9tt49p0x7eyoohjjpm/Brock-s-bodycam.mp4?rlkey=v6prev2pzm0b8axpltjcxczms&e=3&st=lhmaq952&dl=0";
 
 console.log("BROCK_FOOTAGE_URL: ", BROCK_FOOTAGE_URL);
 
@@ -243,7 +240,7 @@ async function main() {
   // Usage: select by resolution or name
   const streams = parseVariantStreams(m3u8Responses[0].text);
 
-  const hd1152_864 = streams.find((s) => s.resolution === "1152x864"); // 1152x864  -- 720x576 (tesT)
+  const hd1152_864 = streams.find((s) => s.resolution === "720x576"); // 1152x864 (actual) -- 720x576 (test)
 
   console.log(
     "Video stream playlist: ",
@@ -256,7 +253,7 @@ async function main() {
 
   // Select Track 2 from 128k
   const track2 = audioTracks.find(
-    (t) => t.name === "Track 2" && t.bitrate === 128, // change back to 1 later for test !!!
+    (t) => t.name === "Track 1" && t.bitrate === 128, // change back to 2 later for real one !!!
   );
 
   // Select Track 1 from 192k

@@ -1,7 +1,7 @@
 # docker-compose.prod.yml
 services:
   app:
-    image: ghcr.io/horwitzadam880/media_integrity:latest
+    image: ghcr.io/horwitzadam880/media_integrity:${IMAGE_TAG}
     environment:
       - ENVIRONMENT=production
       - GDRIVE_KEY=${GDRIVE_KEY}
