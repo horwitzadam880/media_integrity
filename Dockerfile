@@ -46,6 +46,9 @@ COPY . .
 
 RUN npm ci \
     && npx playwright install --with-deps chromium 
+    && npm run build
 
-CMD ["npm", "run", "dev"]
+
+CMD ["npm", "run", "start"]
+    # CMD ["npm", "run", "dev"]
 # CMD ["sleep", "infinity"]
