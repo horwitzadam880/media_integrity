@@ -95,9 +95,15 @@ jobs:
       id-token: write # Required for Sigstore attestation
       attestations: write # Required for Sigstore attestation
 
+    container:
+      image: ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
+      env:
+        GDRIVE_KEY: ${{ secrets.GDRIVE_KEY }}
+      options: --cap-add=NET_ADMIN --cap-add=NET_RAW
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      # - name: Checkout repository
+      #   uses: actions/checkout@v4
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -114,8 +120,8 @@ jobs:
           echo "GDRIVE_KEY='${GDRIVE_KEY}'" > .env
           echo "IMAGE_TAG=${COMMIT_SHA}" >> .env
 
-      - name: Prepare Output Directory
-        run: mkdir -p output
+      # - name: Prepare Output Directory
+      #   run: mkdir -p output
 
       # - name: Run Scraper via Docker Compose
       #   run: |
@@ -125,70 +131,20 @@ jobs:
       #       --env-file .env \
       #       up --no-build --abort-on-container-exit
 
-      - name: Run Scraper via Docker Compose
+      - name: Run Forensic Scraper Task
         run: |
-          # 1. Run the containers in detached background mode so the shell stays alive
-          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml --env-file .env up -d --no-build 
+          # Change directory to where your image holds the code
+          cd /forensic_scraper
 
-          # 2. Force the runner shell to wait interactively until the app container naturally finishes
-          # (Replace "app" with whatever service name your scraper uses inside your docker-compose file)
-          docker wait $(docker compose ps -q app)
+          # Run your script (Matches your original Dockerfile CMD)
+          npm run start
 
-          # 3. Clean up the container stack safely
-          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml down
-
-      - name: Run Scraper and Capture ID via Engine JSON
-        run: |
-          mkdir -p output
-
-          # 1. Spin up the background container stack
-          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml --env-file .env up -d --no-build
-
-          # 2. PROGRAMMATIC CAPTURE: Extract the exact, unchangeable 64-character ID from the engine JSON
-          TARGET_CONTAINER_ID=$(docker compose -f docker-compose.yaml -f docker-compose.prod.yaml ps app --format json | jq -r '.[0].ID // .ID')
-          echo "Engine verified Container ID at birth: ${TARGET_CONTAINER_ID}"
-
-          # 3. CRITICAL LEGAL GUARD: Crash if the variable resolved to blank
-          if [ -z "${TARGET_CONTAINER_ID}" ] || [ "${TARGET_CONTAINER_ID}" = "null" ]; then
-            echo "❌ CRITICAL FAILURE: Docker engine returned an empty ID. Container failed to initialize."
-            exit 1
-          fi
-
-          # 4. Stream background logs for court transparency
-          docker logs ${TARGET_CONTAINER_ID} &
-
-          # 5. Wait for the captured container to finish running its scrapers
-          echo "Pausing pipeline. Waiting for container execution to complete..."
-          docker wait ${TARGET_CONTAINER_ID}
-
-          # 6. GLOBAL ISOLATION AUDIT: Enforce that absolutely no other containers co-existed
-          ALL_CONTAINERS=$(docker ps -a -q)
-          GLOBAL_COUNT=$(echo "${ALL_CONTAINERS}" | grep -c . || true)
-
-          echo "=== GLOBAL DOCKER INTEGRITY AUDIT ==="
-          echo "Total containers detected on host VM: ${GLOBAL_COUNT}"
-
-          if [ "${GLOBAL_COUNT}" -ne 1 ]; then
-            echo "❌ INTEGRITY BREAK: Parallel container spoofing or execution tampering detected!"
-            exit 1
-          fi
-
-          # 7. PROVENANCE BINDING: Prove this container belongs explicitly to this Git commit
-          SPAWNED_FROM_IMAGE=$(docker inspect --format='{{.Config.Image}}' ${TARGET_CONTAINER_ID})
-          EXPECTED_IMAGE="ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}"
-
-          echo "Verified container source origin: ${SPAWNED_FROM_IMAGE}"
-
-          if [ "${SPAWNED_FROM_IMAGE}" != "${EXPECTED_IMAGE}" ]; then
-            echo "❌ ORIGIN TAMPER ALERT: Container ancestry does not match this workflow run commit."
-            exit 1
-          fi
-
-          echo "✅ DOUBLE-LOCK SUCCESSFUL: Absolute isolation and chain-of-custody verified."
-
-
-          echo "=== Root hash manifest: ===\n"
-          cat manifest.json
+          # Move ONLY the manifest file out to GitHub's forced workspace folder 
+          # so the remaining workflow actions can find it natively
+          mkdir -p $GITHUB_WORKSPACE/output
+          cp output/manifest.json $GITHUB_WORKSPACE/output/manifest.json
+          echo "=== Root Hash Manifest: ==="
+          cat $GITHUB_WORKSPACE/output/manifest.json
 
       # - name: Fix File Permissions for Attestation Engine
       #   run: sudo chown -R $USER:$USER output/
