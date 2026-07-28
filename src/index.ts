@@ -410,6 +410,8 @@ async function main() {
   console.log("Manifest hash:", manifestHash);
 
   await browser.close();
+
+  process.exit(0); // 👈 Forces the event loop to instantly terminate
 }
 
 void main();
