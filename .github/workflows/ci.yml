@@ -142,8 +142,10 @@ jobs:
           # Create a clean folder on the bare runner host machine
           mkdir -p output
 
+          CONTAINER_ID=$(docker compose -f docker-compose.yaml -f docker-compose.prod.yaml ps -a -q app)
+
           # Copy only the manifest file from the container's internal path
-          docker cp $(docker compose ps -q app):/forensic_scraper/output/manifest.json ./output/manifest.json
+          docker cp ${CONTAINER_ID}:/forensic_scraper/output/manifest.json ./output/manifest.json
 
           # Reclaim ownership so the non-root GitHub actions runner can read it
           sudo chown $USER:$USER ./output/manifest.json
