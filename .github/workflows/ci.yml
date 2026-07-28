@@ -80,7 +80,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
+            ghcr.io/horwitzadam880/media_integrity:${ GITHUB_OUTPUT }
             ghcr.io/horwitzadam880/media_integrity:latest
           # These cache lines drastically reduce your workflow build times on subsequent runs
           cache-from: type=gha # Before I waste time building anything, let me check GitHub's cache to see if these exact Dockerfile layers were already built in a previous run. If they match, I'll instantly download them instead of compiling them again
@@ -118,6 +118,12 @@ jobs:
           mkdir -p output
           touch output/manifest.json
 
+      # Downcase the image name to ensure compliance with Docker registry rules
+      - name: Convert Image Name to Lowercase
+        id: string
+        run: |
+          echo "IMAGE_ID=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $IMAGE_ID_LOWERCASE
+
       # 👇 FOREGROUND EXECUTION: This blocks the terminal naturally until the scraper finishes.
       # No file copies or CID files are required; the volume mirror handles the file handover.
       - name: Run Forensic Scraper Container
@@ -127,7 +133,7 @@ jobs:
             --network secure_forensics_net \
             -e GDRIVE_KEY="${{ secrets.GDRIVE_KEY }}" \
             --cap-add=NET_ADMIN --cap-add=NET_RAW \
-            ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
+            ghcr.io/horwitzadam880/media_integrity:${ $IMAGE_ID_LOWERCASE }
 
       # Fixes file permissions since the container wrote files as root
       - name: Reclaim File Ownership
