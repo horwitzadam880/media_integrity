@@ -67,11 +67,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }} # GitHub automatically creates a special, temporary credential called secrets.GITHUB_TOKEN every single time a workflow starts up
 
-      # Step 4: Downcase the image name to ensure compliance with Docker registry rules
-      - name: Convert Image Name to Lowercase
-        id: string
-        run: |
-          echo "IMAGE_ID=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+      # # Step 4: Downcase the image name to ensure compliance with Docker registry rules
+      # - name: Convert Image Name to Lowercase
+      #   id: string
+      #   run: |
+      #     echo "IMAGE_ID=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       # Step 5: Build the image from your Dockerfile and push it to GHCR
       - name: Build and Push Docker Image
@@ -80,7 +80,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/horwitzadam880/media_integrity:${ GITHUB_OUTPUT }
+            ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
             ghcr.io/horwitzadam880/media_integrity:latest
           # These cache lines drastically reduce your workflow build times on subsequent runs
           cache-from: type=gha # Before I waste time building anything, let me check GitHub's cache to see if these exact Dockerfile layers were already built in a previous run. If they match, I'll instantly download them instead of compiling them again
@@ -118,22 +118,24 @@ jobs:
           mkdir -p output
           touch output/manifest.json
 
-      # Downcase the image name to ensure compliance with Docker registry rules
-      - name: Convert Image Name to Lowercase
-        id: string
-        run: |
-          echo "IMAGE_ID=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $IMAGE_ID_LOWERCASE
+      # # Downcase the image name to ensure compliance with Docker registry rules
+      # - name: Convert Image Name to Lowercase
+      #   id: string
+      #   run: |
+      #     echo "IMAGE_ID=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $IMAGE_ID_LOWERCASE
 
       # 👇 FOREGROUND EXECUTION: This blocks the terminal naturally until the scraper finishes.
       # No file copies or CID files are required; the volume mirror handles the file handover.
       - name: Run Forensic Scraper Container
+        env:
+          GDRIVE_CONTAINER_ENV: ${{ secrets.GDRIVE_KEY }}
         run: |
           docker run --rm \
             -v ${{ github.workspace }}/output/manifest.json:/forensic_scraper/output/manifest.json \
             --network secure_forensics_net \
-            -e GDRIVE_KEY="${{ secrets.GDRIVE_KEY }}" \
+            -e GDRIVE_KEY="$GDRIVE_CONTAINER_ENV" \
             --cap-add=NET_ADMIN --cap-add=NET_RAW \
-            ghcr.io/horwitzadam880/media_integrity:${ $IMAGE_ID_LOWERCASE }
+            ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
 
       # Fixes file permissions since the container wrote files as root
       - name: Reclaim File Ownership
