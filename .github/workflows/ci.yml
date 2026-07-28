@@ -137,23 +137,37 @@ jobs:
           # 3. Clean up the container stack safely
           docker compose -f docker-compose.yaml -f docker-compose.prod.yaml down
 
-      - name: Extract Forensic Manifest via Docker CP
+      - name: Extract Forensic Manifest with Container Integrity Validation
         run: |
-          # Create a clean folder on the bare runner host machine
           mkdir -p output
 
-          CONTAINER_ID=$(docker compose -f docker-compose.yaml -f docker-compose.prod.yaml ps -a -q app)
+          # 1. Query the engine for ALL container IDs matching the exact Git SHA image ancestor
+          MATCHING_CONTAINERS=$(docker ps -a --filter "ancestor=ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}" --format "{{.ID}}")
 
-          # Copy only the manifest file from the container's internal path
-          docker cp ${CONTAINER_ID}:/forensic_scraper/output/manifest.json ./output/manifest.json
+          # 2. Count how many lines/IDs were returned
+          CONTAINER_COUNT=$(echo "${MATCHING_CONTAINERS}" | grep -c . || true)
 
-          # Reclaim ownership so the non-root GitHub actions runner can read it
+          echo "=== FORENSIC INTEGRITY AUDIT ==="
+          echo "Found matching containers matching image tag: ${CONTAINER_COUNT}"
+
+          # 3. THE COURT GATE: If it's not exactly 1, terminate with extreme prejudice
+          if [ "${CONTAINER_COUNT}" -ne 1 ]; then
+            echo "❌ FORENSIC TAMPER ALERT: Expected exactly 1 container for image tag, found ${CONTAINER_COUNT}."
+            echo "This indicates either zero execution or multiple parallel containers. Integrity compromised."
+            exit 1
+          fi
+
+          # 4. Safe to proceed since we proved isolation
+          TARGET_CONTAINER_ID=$(echo "${MATCHING_CONTAINERS}" | tr -d '[:space:]')
+          echo "Validated Isolated Container ID: ${TARGET_CONTAINER_ID}"
+
+          # 5. Extract the manifest from the proven isolated environment
+          docker cp ${TARGET_CONTAINER_ID}:/forensic_scraper/output/manifest.json ./output/manifest.json
+
+          cat ./output/manifest.json
+
           sudo chown $USER:$USER ./output/manifest.json
-
-          # Print a debug preview to ensure the extraction worked perfectly
-          echo "=== COPIED FORENSIC MANIFEST ==="
-          ls -la output/
-          cat output/manifest.json
+          echo "✅ Forensic manifest isolated and successfully extracted."
 
       - name: Fix File Permissions for Attestation Engine
         run: sudo chown -R $USER:$USER output/
