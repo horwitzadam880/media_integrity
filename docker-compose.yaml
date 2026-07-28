@@ -8,8 +8,6 @@ services:
       - NET_RAW # Grants raw socket access
     networks:
       - secure_forensics_net
-    volumes:
-      - ./output:/forensic_scraper/output
 
 networks: # Assigns the container to a specific network group.
   secure_forensics_net:
