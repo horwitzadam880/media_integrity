@@ -137,17 +137,55 @@ jobs:
           # 3. Clean up the container stack safely
           docker compose -f docker-compose.yaml -f docker-compose.prod.yaml down
 
-      - name: Extract Forensic Manifest with Strict Double-Lock Validation
+      - name: Run Scraper and Capture ID via Engine JSON
         run: |
           mkdir -p output
 
-          # Extract the single container ID present on the machine
-          TARGET_CONTAINER_ID=$(cat scraper_container.cid)
-          echo "Isolated Container ID: ${TARGET_CONTAINER_ID}"
+          # 1. Spin up the background container stack
+          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml --env-file .env up -d --no-build
 
-          # Extract the manifest from the authenticated container
-          docker cp ${TARGET_CONTAINER_ID}:/forensic_scraper/output/manifest.json ./output/manifest.json
-          sudo chown $USER:$USER ./output/manifest.json
+          # 2. PROGRAMMATIC CAPTURE: Extract the exact, unchangeable 64-character ID from the engine JSON
+          TARGET_CONTAINER_ID=$(docker compose -f docker-compose.yaml -f docker-compose.prod.yaml ps app --format json | jq -r '.[0].ID // .ID')
+          echo "Engine verified Container ID at birth: ${TARGET_CONTAINER_ID}"
+
+          # 3. CRITICAL LEGAL GUARD: Crash if the variable resolved to blank
+          if [ -z "${TARGET_CONTAINER_ID}" ] || [ "${TARGET_CONTAINER_ID}" = "null" ]; then
+            echo "❌ CRITICAL FAILURE: Docker engine returned an empty ID. Container failed to initialize."
+            exit 1
+          fi
+
+          # 4. Stream background logs for court transparency
+          docker logs ${TARGET_CONTAINER_ID} &
+
+          # 5. Wait for the captured container to finish running its scrapers
+          echo "Pausing pipeline. Waiting for container execution to complete..."
+          docker wait ${TARGET_CONTAINER_ID}
+
+          # 6. GLOBAL ISOLATION AUDIT: Enforce that absolutely no other containers co-existed
+          ALL_CONTAINERS=$(docker ps -a -q)
+          GLOBAL_COUNT=$(echo "${ALL_CONTAINERS}" | grep -c . || true)
+
+          echo "=== GLOBAL DOCKER INTEGRITY AUDIT ==="
+          echo "Total containers detected on host VM: ${GLOBAL_COUNT}"
+
+          if [ "${GLOBAL_COUNT}" -ne 1 ]; then
+            echo "❌ INTEGRITY BREAK: Parallel container spoofing or execution tampering detected!"
+            exit 1
+          fi
+
+          # 7. PROVENANCE BINDING: Prove this container belongs explicitly to this Git commit
+          SPAWNED_FROM_IMAGE=$(docker inspect --format='{{.Config.Image}}' ${TARGET_CONTAINER_ID})
+          EXPECTED_IMAGE="ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}"
+
+          echo "Verified container source origin: ${SPAWNED_FROM_IMAGE}"
+
+          if [ "${SPAWNED_FROM_IMAGE}" != "${EXPECTED_IMAGE}" ]; then
+            echo "❌ ORIGIN TAMPER ALERT: Container ancestry does not match this workflow run commit."
+            exit 1
+          fi
+
+          echo "✅ DOUBLE-LOCK SUCCESSFUL: Absolute isolation and chain-of-custody verified."
+
 
           echo "=== Root hash manifest: ===\n"
           cat manifest.json
