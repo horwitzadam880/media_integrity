@@ -2,3 +2,5 @@
 services:
   app:
     image: forensic-scraper:latest # Uses your local dev image name
+    volumes:
+      - ./output:/forensic_scraper/output

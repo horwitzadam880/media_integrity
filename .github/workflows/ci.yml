@@ -137,6 +137,22 @@ jobs:
           # 3. Clean up the container stack safely
           docker compose -f docker-compose.yaml -f docker-compose.prod.yaml down
 
+      - name: Extract Forensic Manifest via Docker CP
+        run: |
+          # Create a clean folder on the bare runner host machine
+          mkdir -p output
+
+          # Copy only the manifest file from the container's internal path
+          docker cp $(docker compose ps -q app):/forensic_scraper/output/manifest.json ./output/manifest.json
+
+          # Reclaim ownership so the non-root GitHub actions runner can read it
+          sudo chown $USER:$USER ./output/manifest.json
+
+          # Print a debug preview to ensure the extraction worked perfectly
+          echo "=== COPIED FORENSIC MANIFEST ==="
+          ls -la output/
+          cat output/manifest.json
+
       - name: Fix File Permissions for Attestation Engine
         run: sudo chown -R $USER:$USER output/
 
