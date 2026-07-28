@@ -131,6 +131,8 @@ jobs:
           GDRIVE_CONTAINER_ENV: ${{ secrets.GDRIVE_KEY }}
         run: |
           docker run --rm \
+             -t \
+            --init \
             -w /forensic_scraper \
             -v ${{ github.workspace }}/output/manifest.json:/forensic_scraper/output/manifest.json \
             --network secure_forensics_net \
