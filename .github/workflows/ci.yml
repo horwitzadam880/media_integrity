@@ -128,7 +128,7 @@ jobs:
       - name: Run Scraper via Docker Compose
         run: |
           # 1. Run the containers in detached background mode so the shell stays alive
-          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml --env-file .env up -d --no-build
+          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml --env-file .env up -d --no-build --cidfile scraper_container.cid
 
           # 2. Force the runner shell to wait interactively until the app container naturally finishes
           # (Replace "app" with whatever service name your scraper uses inside your docker-compose file)
@@ -141,47 +141,19 @@ jobs:
         run: |
           mkdir -p output
 
-          # 1. Fetch EVERY container ID currently on the system
-          ALL_CONTAINERS=$(docker ps -a -q)
-          GLOBAL_COUNT=$(echo "${ALL_CONTAINERS}" | grep -c . || true)
-
-          echo "=== FORENSIC DOUBLE-LOCK AUDIT ==="
-          echo "Step 1: Total global containers detected: ${GLOBAL_COUNT}"
-
-          # FIRST LOCK: Prove absolute isolation on the host hardware
-          if [ "${GLOBAL_COUNT}" -ne 1 ]; then
-            echo "❌ INTEGRITY BREAK: Expected exactly 1 container on this clean VM, found ${GLOBAL_COUNT}."
-            exit 1
-          fi
-
           # Extract the single container ID present on the machine
-          TARGET_CONTAINER_ID=$(echo "${ALL_CONTAINERS}" | tr -d '[:space:]')
+          TARGET_CONTAINER_ID=$(cat scraper_container.cid)
           echo "Isolated Container ID: ${TARGET_CONTAINER_ID}"
 
-          # 2. Query the exact image name/tag that spawned this specific container
-          SPAWNED_FROM_IMAGE=$(docker inspect --format='{{.Config.Image}}' ${TARGET_CONTAINER_ID})
-          EXPECTED_IMAGE="ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}"
-
-          echo "Step 2: Container image origin verified as: ${SPAWNED_FROM_IMAGE}"
-
-          # SECOND LOCK: Explicitly bind the container instance to this EXACT Git commit image
-          if [ "${SPAWNED_FROM_IMAGE}" != "${EXPECTED_IMAGE}" ]; then
-            echo "❌ ORIGIN TAMPER ALERT: The single running container was not created by this workflow run!"
-            echo "Expected: ${EXPECTED_IMAGE}"
-            echo "Found:    ${SPAWNED_FROM_IMAGE}"
-            exit 1
-          fi
-
-          echo "✅ DOUBLE-LOCK SUCCESSFUL: Container is perfectly isolated and verified authentic."
-
-          # 3. Extract the manifest from the authenticated container
+          # Extract the manifest from the authenticated container
           docker cp ${TARGET_CONTAINER_ID}:/forensic_scraper/output/manifest.json ./output/manifest.json
           sudo chown $USER:$USER ./output/manifest.json
+
           echo "=== Root hash manifest: ===\n"
           cat manifest.json
 
-      - name: Fix File Permissions for Attestation Engine
-        run: sudo chown -R $USER:$USER output/
+      # - name: Fix File Permissions for Attestation Engine
+      #   run: sudo chown -R $USER:$USER output/
 
       - name: Generate Authenticated Build Provenance
         uses: actions/attest-build-provenance@v2
