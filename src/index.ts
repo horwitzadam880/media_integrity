@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
-import * as http from "node:http"; // Added native http server modules
+import * as http from "node:http";
 import path from "node:path";
 import { type APIResponse, chromium, devices } from "playwright";
 import { lastValueFrom, ReplaySubject, throwError, timer } from "rxjs";
@@ -11,6 +11,7 @@ import { fileURLToPath } from "url";
 import {
   compressChromeContext,
   createOutputFolders,
+  getDropboxMetadata,
   getExternalIPAddress,
   getFileHash,
   hashDirectory,
@@ -18,7 +19,6 @@ import {
   parseVariantStreams,
   processMedia,
   startTCPDump,
-  stopTCPDump,
   unescapeUrl,
   uploadToGCS,
 } from "./helper/helper.js";
@@ -38,11 +38,11 @@ process.env.SSLKEYLOGFILE = "/forensic_scraper/output/ssl_keys.log";
 async function main() {
   await createOutputFolders();
 
-  await startTCPDump();
+  const rootOutputDir = path.join(process.cwd(), "output");
+
+  const { kill: stopTCPDump } = startTCPDump(rootOutputDir);
 
   const browser = await chromium.launch();
-
-  const rootOutputDir = path.join(process.cwd(), "output");
 
   const userDataDir = path.resolve(
     __dirname,
@@ -66,7 +66,7 @@ async function main() {
   await context.route("**/*", (route) => {
     const url = route.request().url();
 
-    // Your specific Dropbox block list
+    //  Dropbox block list (blocked by uBlock Origin)
     const shouldBlock =
       url.includes("marketing.dropbox.com") ||
       url.includes("/log/") ||
@@ -77,7 +77,6 @@ async function main() {
       url.includes("/pro_events");
 
     if (shouldBlock) {
-      //   console.log(`>> BLOCKED: ${url}`);
       return route.abort();
     }
 
@@ -105,7 +104,7 @@ async function main() {
         urlObj.protocol = "https:";
       }
 
-      // 3. 🛡️ THE PROTOCOL PORT FIX:
+      // 3. THE PROTOCOL PORT FIX:
       // If FFmpeg baked port 80 into the address, clear it out.
       // This forces Playwright to default to safe TLS channels (Port 443).
       if (urlObj.port === "80") {
@@ -124,7 +123,7 @@ async function main() {
 
       let bodyBuffer = await playwrightResponse.body();
 
-      // 4. 🌟 THE CRITICAL FIX: Bulk scan and strip ALL secure protocol strings
+      // 4. THE CRITICAL FIX: Bulk scan and strip ALL secure protocol strings
       // out of the streaming text contents (.m3u8 index files, sub-playlists, etc.)
       if (
         secureTargetUrl.includes(".m3u8") ||
@@ -142,7 +141,6 @@ async function main() {
           });
 
           // Force every hidden asset link inside the playlist text to use plain HTTP.
-          // This ensures FFmpeg NEVER drops the proxy or switches back to direct HTTPS mode.
           textData = textData.replace(/https:\/\//g, "http://");
         }
 
@@ -369,6 +367,20 @@ async function main() {
     path.join(rootOutputDir, "ffmpeg-mapped-response-bodies.json"),
   );
 
+  const dropboxMetadata = await getDropboxMetadata(
+    BROCK_FOOTAGE_URL,
+    process.env.DROPBOX_TOKEN ?? "",
+  );
+
+  writeFileSync(
+    path.join(rootOutputDir, "dropbox-metadata.json"),
+    JSON.stringify(dropboxMetadata, null, 2),
+  );
+
+  const dropboxMetadataHash = await getFileHash(
+    path.join(rootOutputDir, "dropbox-metadata.json"),
+  );
+
   // Create main hash manifest
   const manifest = {
     capturedAt: new Date().toISOString(),
@@ -378,6 +390,7 @@ async function main() {
       "brock-footage.har": harHash,
       "brock-har-attachments-manifest.json": harAttachmentsManifestHash,
       "chrome-persistent-context.tar.gz": chromeContextHash,
+      "dropbox-metadata.json": dropboxMetadataHash,
       "ffmpeg-log.txt": ffmpegLogHash,
       "ffmpeg-mapped-response-bodies.json": ffmpegMappedResBodiesHash,
       "final_combined.mp4": finalVideoCombinedHash,
@@ -399,19 +412,19 @@ async function main() {
     .update(manifestString) // hash the string you wrote
     .digest("hex");
 
-  console.log("Manifest hash:", manifestHash);
-
   await uploadToGCS().catch((err: unknown) => {
     console.error("Failed to upload to GCS:", err);
   });
 
-  console.log("All tasks completed successfully.\n");
+  console.log("Root hash manifest: ", manifestString);
 
   console.log("Manifest hash:", manifestHash);
 
+  console.log("All tasks completed successfully.\n");
+
   await browser.close();
 
-  process.exit(0); // 👈 Forces the event loop to instantly terminate
+  process.exit(0); // Forces the event loop to instantly terminate
 }
 
 void main();
