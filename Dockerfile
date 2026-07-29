@@ -60,7 +60,7 @@ RUN npm ci \
 
 RUN chown -R forensic_user:forensic_group /forensic_scraper \
     && chown -R forensic_user:forensic_group /ms-playwright \
-    && chmod -R 700 /ms-playwright
+    && chmod -R 700 /ms-playwright \
     && chmod -R 700 /forensic_scraper
 
 # Drop root execution privileges down to our isolated user account
