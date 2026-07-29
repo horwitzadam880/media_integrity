@@ -134,15 +134,19 @@ jobs:
              -t \
             --init \
             -w /forensic_scraper \
-            -v ${{ github.workspace }}/output/manifest.json:/forensic_scraper/output/manifest.json \
             --network secure_forensics_net \
             -e GDRIVE_KEY="$GDRIVE_CONTAINER_ENV" \
             --cap-add=NET_ADMIN --cap-add=NET_RAW \
             ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
 
       # Fixes file permissions since the container wrote files as root
-      - name: Reclaim File Ownership
-        run: sudo chown -R $USER:$USER output/
+      # - name: Reclaim File Ownership
+      #   run: sudo chown -R $USER:$USER output/
+
+      - name: Copy manifest from container to host
+        run: |
+          mkdir -p ${{ github.workspace }}/output
+          docker cp scraper-container:/forensic_scraper/output/manifest.json ${{ github.workspace }}/output/manifest.json
 
       # Generates Authenticated Build Provenance using Sigstore infrastructure
       - name: Generate Authenticated Build Provenance
