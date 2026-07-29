@@ -1,4 +1,4 @@
-import { exec, spawn } from "node:child_process";
+import { exec, execSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, promises as fs } from "node:fs";
 import { pipeline } from "node:stream/promises";
@@ -225,17 +225,51 @@ export async function processMedia(
   }
 }
 
-export async function startTCPDump() {
+export function startTCPDump(rootOutputDir: string): {
+  kill: () => Promise<void>;
+  pid: number | undefined;
+} {
   const networkCapture = path.join(rootOutputDir, "network_capture.pcap");
   const consoleLog = path.join(rootOutputDir, "tcpdump_console.log");
-  //$(ip route show default | awk '{print $5}')
-  await execAsync(
-    `tcpdump -i $(ip route show default | awk '{print $5}') -nn -B 8192 -U -s 0 -w ${networkCapture} > ${consoleLog} 2>&1 &`,
-  );
-}
 
-export async function stopTCPDump() {
-  await execAsync("pkill tcpdump");
+  const iface = execSync("ip route show default | awk '{print $5}'")
+    .toString()
+    .trim();
+  const logStream = createWriteStream(consoleLog, { flags: "a" });
+
+  const child = spawn(
+    "tcpdump",
+    ["-i", iface, "-nn", "-B", "8192", "-U", "-s", "0", "-w", networkCapture],
+    {
+      stdio: ["ignore", logStream, logStream],
+    },
+  );
+
+  return {
+    // Change this to an async function that returns a Promise
+    kill: () => {
+      return new Promise((resolve) => {
+        // 1. If the child process is already dead, resolve immediately
+        if (child.killed || child.exitCode !== null) {
+          resolve();
+          return;
+        }
+
+        // 2. Set up a listener for when the process officially terminates
+        child.on("close", (code, signal) => {
+          console.log(
+            `tcpdump process closed cleanly (Code: ${String(code)}, Signal: ${String(signal)})`,
+          );
+          resolve(); // Resolve the promise once it's truly dead
+        });
+
+        // 3. Send the signal to stop tcpdump cleanly
+        child.kill("SIGINT");
+      });
+    },
+
+    pid: child.pid,
+  };
 }
 
 export function unescapeUrl(url: string): string {
@@ -367,4 +401,20 @@ export interface Segment {
   segment: number;
   status: "complete" | "downloading" | "error" | "initial";
   url: string;
+}
+
+export async function getDropboxMetadata(url: string, dropboxToken: string) {
+  return fetch(
+    "https://api.dropboxapi.com/2/sharing/get_shared_link_metadata",
+    {
+      body: JSON.stringify({
+        url,
+      }),
+      headers: {
+        Authorization: `Bearer ${dropboxToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  ).then((response) => response.json());
 }
