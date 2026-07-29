@@ -42,11 +42,11 @@ RUN mkdir -m 700 -p ~/.gnupg \
     && cp -R /tmp/node-extract/include/* /usr/local/include/ 
 
 # STEP 4: Grant specific network tracking capabilities to the binary
-RUN setcap cap_net_raw,cap_net_admin=eip /usr/sbin/tcpdump
+RUN setcap cap_net_raw,cap_net_admin=ep /usr/sbin/tcpdump
 
 # STEP 5: Create the isolated non-root system users
 RUN groupadd -g 10001 forensic_group && \
-    useradd -u 10001 -g forensic_group -m -s /bin/bash forensic_user
+    useradd -u 10001 -g forensic_group -m -s /bin/sh forensic_user
 
 # STEP 4: Establish the isolated forensic workspace
 WORKDIR /forensic_scraper
