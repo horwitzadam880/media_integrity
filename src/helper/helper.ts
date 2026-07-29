@@ -235,18 +235,30 @@ export function startTCPDump(rootOutputDir: string): {
   const iface = execSync("ip route show default | awk '{print $5}'")
     .toString()
     .trim();
+
   const logStream = createWriteStream(consoleLog, { flags: "a" });
 
   const child = spawn(
     "tcpdump",
     ["-i", iface, "-nn", "-B", "8192", "-U", "-s", "0", "-w", networkCapture],
     {
-      stdio: ["ignore", logStream, logStream],
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
 
+  pipeline(child.stdout, logStream).catch((err: unknown) => {
+    // if (err.code !== "ERR_STREAM_PREMATURE_CLOSE") {
+    console.error("Stdout stream error:", err);
+    // }
+  });
+
+  pipeline(child.stderr, logStream).catch((err: unknown) => {
+    // if (err.code !== "ERR_STREAM_PREMATURE_CLOSE") {
+    console.error("Stderr stream error:", err);
+    // }
+  });
+
   return {
-    // Change this to an async function that returns a Promise
     kill: () => {
       return new Promise((resolve) => {
         // 1. If the child process is already dead, resolve immediately
