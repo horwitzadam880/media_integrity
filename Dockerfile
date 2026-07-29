@@ -42,7 +42,7 @@ RUN mkdir -m 700 -p ~/.gnupg \
     && cp -R /tmp/node-extract/include/* /usr/local/include/ 
 
 # STEP 4: Grant specific network tracking capabilities to the binary
-RUN setcap cap_net_raw,cap_net_admin=ep /usr/sbin/tcpdump
+RUN setcap cap_net_raw,cap_net_admin=ep /usr/bin/tcpdump
 
 # STEP 5: Create the isolated non-root system users
 RUN groupadd -g 10001 forensic_group && \

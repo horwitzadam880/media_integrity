@@ -282,7 +282,18 @@ async function main() {
     rootOutputDir,
   );
 
-  console.log("Media Files Download Finished!\nHashing files...\n");
+  console.log("Media Files Download Finished!");
+
+  // MUST close context to flush HAR to disk
+  await context.close();
+
+  await browser.close();
+
+  await stopTCPDump();
+
+  await compressChromeContext();
+
+  console.log("Hashing files...");
 
   const track1Hash = await getFileHash(
     path.join(rootOutputDir, "media", "audio_track1.m4a"),
@@ -307,13 +318,6 @@ async function main() {
   console.log("\nTrack 1 Hash:", track1Hash);
   console.log("\nTrack 2 Hash:", track2Hash);
   console.log("\nVideo Hash:", videoHash);
-
-  // MUST close context to flush HAR to disk
-  await context.close();
-
-  await stopTCPDump();
-
-  await compressChromeContext();
 
   const networkCaptureHash = await getFileHash(
     path.join(rootOutputDir, "network_capture.pcap"),
@@ -421,8 +425,6 @@ async function main() {
   console.log("Manifest hash:", manifestHash);
 
   console.log("All tasks completed successfully.\n");
-
-  await browser.close();
 
   process.exit(0); // Forces the event loop to instantly terminate
 }
