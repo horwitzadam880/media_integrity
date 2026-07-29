@@ -129,6 +129,7 @@ jobs:
       - name: Run Forensic Scraper Container
         env:
           GDRIVE_CONTAINER_ENV: ${{ secrets.GDRIVE_KEY }}
+          DROPBOX_CONTAINER_ENV: ${{ secrets.DROPBOX_KEY }}
         run: |
           docker run --rm \
              -t \
@@ -136,6 +137,7 @@ jobs:
             -w /forensic_scraper \
             --network secure_forensics_net \
             -e GDRIVE_KEY="$GDRIVE_CONTAINER_ENV" \
+            -e DROPBOX_KEY="$DROPBOX_CONTAINER_ENV" \
             --cap-add=NET_ADMIN --cap-add=NET_RAW \
             ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
 
