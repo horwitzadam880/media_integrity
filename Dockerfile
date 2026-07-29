@@ -6,7 +6,7 @@ FROM ubuntu@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b706
 # Force a fixed, static timestamp for file creation logs inside the container layers
 # This eliminates time-variance in compilation, ensuring reproducible layer hashes
 
-ENV SOURCE_DATE_EPOCH=1719878400
+# ENV SOURCE_DATE_EPOCH=1719878400
 ENV DEBIAN_FRONTEND=noninteractive 
 
 # Force Playwright to use a shared global directory rather than a user home folder
@@ -42,11 +42,11 @@ RUN mkdir -m 700 -p ~/.gnupg \
     && cp -R /tmp/node-extract/include/* /usr/local/include/ 
 
 # STEP 4: Grant specific network tracking capabilities to the binary
-RUN setcap cap_net_raw,cap_net_admin=eip /usr/sbin/tcpdump
+RUN setcap cap_net_raw,cap_net_admin=ep /usr/sbin/tcpdump
 
 # STEP 5: Create the isolated non-root system users
 RUN groupadd -g 10001 forensic_group && \
-    useradd -u 10001 -g forensic_group -m -s /bin/bash forensic_user
+    useradd -u 10001 -g forensic_group -m -s /bin/sh forensic_user
 
 # STEP 4: Establish the isolated forensic workspace
 WORKDIR /forensic_scraper
