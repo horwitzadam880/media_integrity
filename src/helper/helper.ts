@@ -415,18 +415,25 @@ export interface Segment {
   url: string;
 }
 
+// export async function getDropboxMetadata(url: string, dropboxToken: string) {
+//   return fetch(
+//     "https://api.dropboxapi.com/2/sharing/get_shared_link_metadata",
+//     {
+//       body: JSON.stringify({
+//         url,
+//       }),
+//       headers: {
+//         Authorization: `Bearer ${dropboxToken}`,
+//         "Content-Type": "application/json",
+//       },
+//       method: "POST",
+//     },
+//   ).then((response) => response.json());
+// }
+
+// Temporary placeholder until stealthy solution is worked out
 export async function getDropboxMetadata(url: string, dropboxToken: string) {
-  return fetch(
-    "https://api.dropboxapi.com/2/sharing/get_shared_link_metadata",
-    {
-      body: JSON.stringify({
-        url,
-      }),
-      headers: {
-        Authorization: `Bearer ${dropboxToken}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-    },
-  ).then((response) => response.json());
+  console.log("token: ", dropboxToken);
+  const data = await Promise.resolve({ mockData: "test" });
+  return data;
 }
