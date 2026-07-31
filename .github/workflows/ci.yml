@@ -8,6 +8,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 jobs:
   quality-checks:
@@ -131,7 +133,7 @@ jobs:
           GDRIVE_CONTAINER_ENV: ${{ secrets.GDRIVE_KEY }}
           DROPBOX_CONTAINER_ENV: ${{ secrets.DROPBOX_KEY }}
         run: |
-          docker run --rm \
+          docker run --name scraper-container \
              -t \
             --init \
             -w /forensic_scraper \

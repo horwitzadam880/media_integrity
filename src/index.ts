@@ -373,7 +373,7 @@ async function main() {
 
   const dropboxMetadata = await getDropboxMetadata(
     BROCK_FOOTAGE_URL,
-    process.env.DROPBOX_TOKEN ?? "",
+    process.env.DROPBOX_KEY ?? "",
   );
 
   writeFileSync(
