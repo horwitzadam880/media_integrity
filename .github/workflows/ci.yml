@@ -159,11 +159,11 @@ jobs:
           mkdir -p ${{ github.workspace }}/output
           docker cp scraper-container:/forensic_scraper/output/manifest.json ${{ github.workspace }}/output/manifest.json
 
-      # Generates Authenticated Build Provenance using Sigstore infrastructure
-      - name: Generate Authenticated Build Provenance
-        uses: actions/attest-build-provenance@v2
+      # 🔄 FIXED USE CASE: Pure cryptographic signing of the program's output data
+      - name: Cryptographically Sign Evidence Manifest Data
+        uses: sigstore/gh-action-sigstore-python@v3.5.0 # ◄ latest Official Sigstore file data signer
         with:
-          subject-path: "output/manifest.json"
+          inputs: output/manifest.json
 
       # Securely uploads the metadata file under your 500MB free cap
       - name: Upload Court Evidence Metadata
