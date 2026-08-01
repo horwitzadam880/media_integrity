@@ -88,6 +88,13 @@ jobs:
           cache-from: type=gha # Before I waste time building anything, let me check GitHub's cache to see if these exact Dockerfile layers were already built in a previous run. If they match, I'll instantly download them instead of compiling them again
           cache-to: type=gha,mode=max # Once the build finishes, export and upload every single layer—including the deep, intermediate build stages (mode=max)—back to GitHub's storage so the next pipeline run can use them.
 
+      # New Step: Generate Build Provenance for the Container Image using its exact hash
+      - name: Attest Built Docker Container Image
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/horwitzadam880/media_integrity
+          subject-digest: ${{ steps.build-image.outputs.digest }}
+
   run-scraper:
     runs-on: ubuntu-latest
     needs: build-and-push-image
