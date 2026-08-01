@@ -50,7 +50,8 @@ jobs:
         run: npm run format:check
   build-and-push-image:
     runs-on: ubuntu-latest
-    #ubuntu-latest -- previous
+    outputs:
+      image_digest: ${{ steps.build-image.outputs.digest }}
 
     steps:
       # Step 1: Pull your source code into the GitHub runner workspace
@@ -95,7 +96,7 @@ jobs:
         with:
           subject-name: ghcr.io/horwitzadam880/media_integrity
           subject-digest: ${{ steps.build-image.outputs.digest }}
-
+ 
   run-scraper:
     runs-on: ubuntu-latest
     needs: build-and-push-image
@@ -117,7 +118,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull explicit image
-        run: docker pull ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
+        run: docker pull ghcr.io/horwitzadam880/media_integrity@${{ needs.build-and-push-image.outputs.image_digest }}
 
       # 👇 FIXED NETWORKING: Programmatically instantiates your isolated forensic bridge network
       - name: Create Forensic Bridge Network
@@ -149,7 +150,7 @@ jobs:
             -e GDRIVE_KEY="$GDRIVE_CONTAINER_ENV" \
             -e DROPBOX_KEY="$DROPBOX_CONTAINER_ENV" \
             --cap-add=NET_ADMIN --cap-add=NET_RAW \
-            ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
+            ghcr.io/horwitzadam880/media_integrity@${{ needs.build-and-push-image.outputs.image_digest }}
 
       # Fixes file permissions since the container wrote files as root
       # - name: Reclaim File Ownership
@@ -171,4 +172,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: forensic-scraper-run-${{ github.sha }}
-          path: output/manifest.json
+          path: |
+            output/manifest.json
+            output/manifest.json.sigstore.json
