@@ -139,10 +139,17 @@ export async function processMedia(
     "http://127.0.0.1:9898",
     "-loglevel",
     "debug",
+    "-http_persistent",
+    "1",
+    "-max_reload",
+    "3",
+    "-re",
     "-i",
     videoUrl,
+    "-re",
     "-i",
     audioUrl1,
+    "-re",
     "-i",
     audioUrl2,
     "-map",
@@ -201,6 +208,18 @@ export async function processMedia(
     path.join(mediaDir, "audio_track2.m4a"),
   ];
 
+  const extractLipSyncingArgs = [
+  "-loglevel", "debug",
+  "-ss", "00:35:43",          
+  "-i", finalCombinedPath,
+  "-", "4",
+  "-c:v", "libx264",               
+  "-crf", "18", 
+  "-c:a", "aac",
+  "-map_metadata", "0",      
+  path.join(mediaDir, "leona.mp4"),
+];
+
   try {
     console.log("Starting master multi-track download pass...");
     await runFFmpeg(masterArgs, logFilePath);
@@ -213,6 +232,9 @@ export async function processMedia(
 
     console.log("Extracting isolated audio track 2...");
     await runFFmpeg(extractAudio2Args, logFilePath);
+
+    console.log("Extracting partial 'what should i charge him with?' segment...");
+    await runFFmpeg(extractLipSyncingArgs, logFilePath);
 
     console.log("All forensic processing stages completed successfully.");
     return true;
