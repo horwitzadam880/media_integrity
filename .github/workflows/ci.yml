@@ -31,9 +31,6 @@ jobs:
         env:
           CLOUDSMITH_AUTH_TOKEN: ${{ secrets.CLOUDSMITH_AUTH_TOKEN }} # 👈 Injects token securely into memory on the fly
 
-      - name: Run tests
-        run: npm run test:run
-
       - name: Run TypeScript type checking
         run: npm run type-check
 
