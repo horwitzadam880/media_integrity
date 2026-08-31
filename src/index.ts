@@ -311,6 +311,10 @@ async function main() {
     path.join(rootOutputDir, "media", "final_combined.mp4"),
   );
 
+  const leonaVideoHash = await getFileHash(
+    path.join(rootOutputDir, "media", "leona.mp4"),
+  );
+
   const ffmpegLogHash = await getFileHash(
     path.join(rootOutputDir, "ffmpeg-log.txt"),
   );
@@ -398,6 +402,7 @@ async function main() {
       "ffmpeg-log.txt": ffmpegLogHash,
       "ffmpeg-mapped-response-bodies.json": ffmpegMappedResBodiesHash,
       "final_combined.mp4": finalVideoCombinedHash,
+      "leona.mp4": leonaVideoHash,
       "network_capture.pcap": networkCaptureHash,
       "screenshot.png": screenshotHash,
       "ssl_keys.log": sslKeysLogHash,
