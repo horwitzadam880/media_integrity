@@ -4,12 +4,13 @@ import { writeFileSync } from "node:fs";
 import * as http from "node:http";
 import path from "node:path";
 import { type APIResponse, chromium, devices } from "playwright";
-import { lastValueFrom, ReplaySubject, throwError, timer } from "rxjs";
-import { filter, retry, take, timeout, toArray } from "rxjs/operators";
+import { lastValueFrom, ReplaySubject, throwError } from "rxjs";
+import { filter, take, timeout, toArray } from "rxjs/operators";
 import { fileURLToPath } from "url";
 
 import {
   compressChromeContext,
+  copySSLKeylogFile,
   createOutputFolders,
   getDropboxMetadata,
   getExternalIPAddress,
@@ -18,6 +19,7 @@ import {
   parseAudioTracks,
   parseVariantStreams,
   processMedia,
+  randomPause,
   startTCPDump,
   unescapeUrl,
   uploadToGCS,
@@ -25,13 +27,19 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// const BROCK_FOOTAGE_URL_TEST = // test
-//   "https://www.dropbox.com/scl/fo/b85f1jqi0xi86ocn425jq/AFP1l5lCBonN8eXwrRcDdpU/NEW%20-%20TRUCK%20RAMMING%20GATE%20AND%20NIGHTSTICK%20FOOTAGE/UPDATED%20-%20Truck%20and%20Nightstick%20Footage%20-%204.20.26.mp4?rlkey=qul8wibhidoam8ps6xv9ugc2m&e=1&dl=0";
-
 const BROCK_FOOTAGE_URL = // actual
-  "https://www.dropbox.com/scl/fi/soy9tt49p0x7eyoohjjpm/Brock-s-bodycam.mp4?rlkey=v6prev2pzm0b8axpltjcxczms&e=3&st=lhmaq952&dl=0";
+  "https://www.dropbox.com/scl/fo/6ocr0u3dycntll5x48l7r/AIAaU5i5mz1h6r9SUyYy-qc?rlkey=esjo4eve600tspyws41yrsloo&st=8z7bcsr9&dl=0";
 
 console.log("BROCK_FOOTAGE_URL: ", BROCK_FOOTAGE_URL);
+
+//@eslint-disable-next-line
+
+const rawLinkPassword = process.env.DROPBOX_LINK_PASSWORD ?? "";
+
+const linkPasswordHash = crypto
+  .createHash("sha256")
+  .update(rawLinkPassword)
+  .digest("hex");
 
 process.env.SSLKEYLOGFILE = "/forensic_scraper/output/ssl_keys.log";
 
@@ -182,42 +190,93 @@ async function main() {
 
   await page.goto(BROCK_FOOTAGE_URL, { timeout: 6000000 });
 
-  const screenshot = await page.screenshot({
-    path: path.join(rootOutputDir, "screenshot.png"),
+  const screenshot1 = await page.screenshot({
+    path: path.join(rootOutputDir, "screenshot1.png"),
   });
 
-  const screenshotHash = crypto
+  const screenshot1Hash = crypto
     .createHash("sha256")
-    .update(screenshot)
+    .update(screenshot1)
     .digest("hex");
 
-  console.log("Screenshot Hash:", screenshotHash, "\n");
+  console.log("Screenshot1 Hash:", screenshot1Hash, "\n");
+
+  //Login now
+
+  const passwordInput = page.locator("#shared-link-password");
+  const submitButton = page.getByTestId("shared-link-password-button");
+
+  await passwordInput.waitFor({ state: "visible" });
+
+  await page.waitForTimeout(randomPause(1, 3));
+
+  await passwordInput.click();
+
+  await page.waitForTimeout(randomPause(2, 5));
+
+  await passwordInput.fill(rawLinkPassword);
+
+  await page.waitForTimeout(randomPause(1, 2));
+
+  await submitButton.click();
+
+  const gridLink = page.getByTestId("grid-link");
+  await gridLink.waitFor({ state: "visible", timeout: 15000 });
+
+  const screenshot2 = await page.screenshot({
+    path: path.join(rootOutputDir, "screenshot2.png"),
+  });
+
+  const screenshot2Hash = crypto
+    .createHash("sha256")
+    .update(screenshot2)
+    .digest("hex");
+
+  console.log("Screenshot2 Hash:", screenshot2Hash, "\n");
+
+  const declineCookiesBtn = page.locator("#decline_cookies_button");
+
+  await declineCookiesBtn
+    .waitFor({ state: "visible", timeout: 5000 })
+    .catch(() => {
+      console.log("Cookie banner did not appear, moving on.");
+    });
+
+  await page.waitForTimeout(randomPause(1, 3));
+
+  await declineCookiesBtn.click();
+
+  await page.waitForTimeout(randomPause(1, 4));
+
+  await gridLink.click();
 
   // Wait for video element to exist
   console.log("Waiting for video element to exist\n");
 
   await page.waitForSelector("video", { timeout: 30000 });
 
+  const screenshot3 = await page.screenshot({
+    path: path.join(rootOutputDir, "screenshot3.png"),
+  });
+
+  const screenshot3Hash = crypto
+    .createHash("sha256")
+    .update(screenshot3)
+    .digest("hex");
+
+  console.log("Screenshot3 Hash:", screenshot3Hash, "\n");
+
   const m3u8$ = response$.pipe(
     filter(
       (res) =>
         (res.url().includes(".m3u8") ||
           res.url().includes("m3u8") ||
-          (res.headers()["content-type"] || "").includes("mpegurl")) &&
+          (res.headers()["content-type"] || "").includes("/")) &&
         res.status() === 200,
     ),
     timeout({
       each: 10000,
       with: () => throwError(() => new Error("No .m3u8 response within 10s")),
-    }),
-    retry({
-      count: 10,
-      delay: (err: Error, retryCount: number) => {
-        console.warn(
-          `Retry #${String(retryCount)}: ${err.message}. Waiting 3s...`,
-        );
-        return timer(3000);
-      },
     }),
     take(5),
     toArray(),
@@ -334,6 +393,9 @@ async function main() {
   const sslKeysLogHash = await getFileHash(
     path.join(rootOutputDir, "ssl_keys.log"),
   );
+
+  await copySSLKeylogFile();
+
   const chromeContextHash = await getFileHash(
     path.join(rootOutputDir, "chrome-persistent-context.tar.gz"),
   );
@@ -404,11 +466,14 @@ async function main() {
       "final_combined.mp4": finalVideoCombinedHash,
       "leona.mp4": leonaVideoHash,
       "network_capture.pcap": networkCaptureHash,
-      "screenshot.png": screenshotHash,
-      "ssl_keys.log": sslKeysLogHash,
+      "screenshot1.png": screenshot1Hash,
+      "screenshot2.png": screenshot2Hash,
+      "screenshot3.png": screenshot3Hash,
+      "ssl_keys.log.bak": sslKeysLogHash,
       "tcpdump_console.log": tcpdump_consoleLogHash,
       "video_only.mp4": videoHash,
     },
+    hashedLinkPassword: linkPasswordHash,
     ipAddress: externalIPAddress,
     sourceUrl: BROCK_FOOTAGE_URL,
   };
@@ -427,7 +492,7 @@ async function main() {
 
   console.log("Root hash manifest: ", manifestString);
 
-  console.log("Manifest hash:", manifestHash);
+  console.log("Manifest hash: ", manifestHash);
 
   console.log("All tasks completed successfully.\n");
 

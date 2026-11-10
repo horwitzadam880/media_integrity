@@ -6,7 +6,9 @@ FROM ubuntu@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b706
 # Force a fixed, static timestamp for file creation logs inside the container layers
 # This eliminates time-variance in compilation, ensuring reproducible layer hashes
 
-# ENV SOURCE_DATE_EPOCH=1719878400
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+
 ENV DEBIAN_FRONTEND=noninteractive 
 
 # Force Playwright to use a shared global directory rather than a user home folder
@@ -21,18 +23,20 @@ RUN echo 'Acquire::https::snapshot.ubuntu.com::Verify-Peer "false";' > /etc/apt/
     && apt install -y ca-certificates \
     && rm /etc/apt/apt.conf.d/80snapshot-noverify \
     && apt clean && apt update \
-    && apt install -y curl gpg ffmpeg tcpdump bind9-dnsutils iproute2
+    && apt install -y curl gpg ffmpeg tcpdump bind9-dnsutils iproute2 python3
 
-# Google Cloud 
-RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list \
-    && apt-get update \
-    && apt-get install -y google-cloud-cli 
+# STEP 4: Install Immutable, Pinned Google Cloud CLI Tarball
+RUN curl -fsO https://storage.googleapis.com/cloud-sdk-release/google-cloud-cli-584.0.0-linux-x86_64.tar.gz \
+    && echo "02f0a54a1c5f9e582c568cd8da8258e22275b8ab033532fa03fd46bd9f7a3398 google-cloud-cli-584.0.0-linux-x86_64.tar.gz" | sha256sum --check - \
+    && tar -xzf google-cloud-cli-584.0.0-linux-x86_64.tar.gz -C /usr/local --strip-components=1 \
+    && /usr/local/bin/gcloud config set component_manager/disable_update_check true \
+    && rm google-cloud-cli-584.0.0-linux-x86_64.tar.gz
 
 # Nodejs
 RUN mkdir -m 700 -p ~/.gnupg \
     && gpg --keyserver hkps://keys.openpgp.org --recv-keys 5BE8A3F6C8A5C01D106C0AD820B1A390B168D356 \
     && curl -fsO  https://nodejs.org/dist/v24.15.0/node-v24.15.0-linux-x64.tar.gz \
+    && echo "44836872d9aec49f1e6b52a9a922872db9a2b02d235a616a5681b6a85fec8d89  node-v24.15.0-linux-x64.tar.gz" | sha256sum --check - \
     && curl -fsO https://nodejs.org/dist/v24.15.0/SHASUMS256.txt.asc && (gpg --decrypt SHASUMS256.txt.asc > SHASUMS256.txt && sha256sum --check SHASUMS256.txt --ignore-missing) || { echo "Security Error: Checksum mismatch!"; exit 1; } \
     && mkdir -p /tmp/node-extract \
     && tar -xzf node-v24.15.0-linux-x64.tar.gz -C /tmp/node-extract --strip-components=1 \

@@ -7,7 +7,7 @@ import path from "path";
 import { promisify } from "util";
 
 // Promisify exec for clean async/await usage
-const execAsync = promisify(exec);
+export const execAsync = promisify(exec);
 
 interface UploadConfig {
   bucketName: string;
@@ -40,10 +40,18 @@ export interface VariantStream {
   uri: string;
 }
 
+const rootOutputDir = path.join(process.cwd(), "output");
+
 export async function compressChromeContext() {
   const contextPath = path.join(rootOutputDir, "chrome-persistent-context");
   await execAsync(
     `tar -czvf ${path.join(rootOutputDir, "chrome-persistent-context.tar.gz")} ${contextPath}`,
+  );
+}
+
+export async function copySSLKeylogFile() {
+  await execAsync(
+    `cp ${rootOutputDir}/ssl_keys.log ${rootOutputDir}/ssl_keys.log.bak`,
   );
 }
 
@@ -120,8 +128,6 @@ export function parseVariantStreams(text: string): VariantStream[] {
   return streams;
 }
 
-const rootOutputDir = path.join(process.cwd(), "output");
-
 export async function processMedia(
   videoUrl: string,
   audioUrl1: string,
@@ -135,23 +141,24 @@ export async function processMedia(
   await fs.mkdir(mediaDir, { recursive: true });
 
   const masterArgs = [
-    "-http_proxy",
-    "http://127.0.0.1:9898",
     "-loglevel",
     "debug",
-    "-http_persistent",
-    "1",
-    "-max_reload",
-    "3",
-    "-re",
+    // Input 1
+    "-http_proxy",
+    "http://127.0.0.1:9898",
     "-i",
     videoUrl,
-    "-re",
+    // Input 2
+    "-http_proxy",
+    "http://127.0.0.1:9898",
     "-i",
     audioUrl1,
-    "-re",
+    // Input 3
+    "-http_proxy",
+    "http://127.0.0.1:9898",
     "-i",
     audioUrl2,
+    // Mapping and Stream Copying
     "-map",
     "0:v:0",
     "-map",
@@ -245,6 +252,12 @@ export async function processMedia(
     );
     throw error;
   }
+}
+
+export function randomPause(min: number, max: number): number {
+  // Formula to get a random integer between min and max (inclusive)
+  const ms = Math.floor(Math.random() * (max - min + 1)) + min;
+  return ms;
 }
 
 export function startTCPDump(rootOutputDir: string): {

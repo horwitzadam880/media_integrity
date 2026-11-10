@@ -12,54 +12,20 @@ permissions:
   attestations: write
 
 jobs:
-  quality-checks:
-    runs-on: ubuntu-latest
-    #ubuntu-latest -- previous
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-
-      - name: Install Secure Node Dependencies
-        run: npm ci
-        env:
-          CLOUDSMITH_AUTH_TOKEN: ${{ secrets.CLOUDSMITH_AUTH_TOKEN }} # 👈 Injects token securely into memory on the fly
-
-      - name: Run TypeScript type checking
-        run: npm run type-check
-
-      - name: Run ESLint and fix
-        run: npm run lint:fix
-
-      - name: Format with Prettier
-        run: npm run format
-
-      - name: Check for remaining ESLint errors
-        run: npm run lint
-
-      - name: Check for remaining formatting issues
-        run: npm run format:check
   build-and-push-image:
     runs-on: ubuntu-latest
     outputs:
       image_digest: ${{ steps.build-image.outputs.digest }}
-
     steps:
-      # Step 1: Pull your source code into the GitHub runner workspace
+      # Pull your source code into the GitHub runner workspace
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Set up Buildx (Advanced Docker engine feature that enables caching)
+      # Set up Buildx (Advanced Docker engine feature that enables caching)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Step 3: Log in to the GitHub Container Registry using built-in credentials
+      # Log in to the GitHub Container Registry using built-in credentials
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -67,13 +33,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }} # GitHub automatically creates a special, temporary credential called secrets.GITHUB_TOKEN every single time a workflow starts up
 
-      # # Step 4: Downcase the image name to ensure compliance with Docker registry rules
-      # - name: Convert Image Name to Lowercase
-      #   id: string
-      #   run: |
-      #     echo "IMAGE_ID=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-
-      # Step 5: Build the image from your Dockerfile and push it to GHCR
+      # Build the image from your Dockerfile and push it to GHCR
       - name: Build and Push Docker Image
         id: build-image
         uses: docker/build-push-action@v6
@@ -83,6 +43,10 @@ jobs:
           tags: |
             ghcr.io/horwitzadam880/media_integrity:${{ github.sha }}
             ghcr.io/horwitzadam880/media_integrity:latest
+          # This automatically grabs the commit timestamp and passes it as a build arg
+          build-args: |
+            SOURCE_DATE_EPOCH=${{ fromJSON(github.event.inputs.source_date_epoch || 'null') || github.event.repository.pushed_at || 0 }}
+
           # These cache lines drastically reduce your workflow build times on subsequent runs
           cache-from: type=gha # Before I waste time building anything, let me check GitHub's cache to see if these exact Dockerfile layers were already built in a previous run. If they match, I'll instantly download them instead of compiling them again
           cache-to: type=gha,mode=max # Once the build finishes, export and upload every single layer—including the deep, intermediate build stages (mode=max)—back to GitHub's storage so the next pipeline run can use them.
@@ -93,7 +57,6 @@ jobs:
         with:
           subject-name: ghcr.io/horwitzadam880/media_integrity
           subject-digest: ${{ steps.build-image.outputs.digest }}
- 
   run-scraper:
     runs-on: ubuntu-latest
     needs: build-and-push-image
@@ -102,6 +65,8 @@ jobs:
       id-token: write # Required for Sigstore attestation
       attestations: write # Required for saving Sigstore provenance data
       packages: read # Required to pull your private container image
+    env:
+      CONTAINER_DIGEST: ${{ needs.build-and-push-image.outputs.image_digest }}
 
     steps:
       - name: Checkout repository
@@ -126,12 +91,6 @@ jobs:
           mkdir -p output
           touch output/manifest.json
 
-      # # Downcase the image name to ensure compliance with Docker registry rules
-      # - name: Convert Image Name to Lowercase
-      #   id: string
-      #   run: |
-      #     echo "IMAGE_ID=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $IMAGE_ID_LOWERCASE
-
       # 👇 FOREGROUND EXECUTION: This blocks the terminal naturally until the scraper finishes.
       # No file copies or CID files are required; the volume mirror handles the file handover.
       - name: Run Forensic Scraper Container
@@ -149,10 +108,6 @@ jobs:
             --cap-add=NET_ADMIN --cap-add=NET_RAW \
             ghcr.io/horwitzadam880/media_integrity@${{ needs.build-and-push-image.outputs.image_digest }}
 
-      # Fixes file permissions since the container wrote files as root
-      # - name: Reclaim File Ownership
-      #   run: sudo chown -R $USER:$USER output/
-
       - name: Copy manifest from container to host
         run: |
           mkdir -p ${{ github.workspace }}/output
@@ -164,7 +119,7 @@ jobs:
         with:
           inputs: output/manifest.json
 
-      # Securely uploads the metadata file under your 500MB free cap
+      # Securely uploads the metadata file
       - name: Upload Court Evidence Metadata
         uses: actions/upload-artifact@v4
         with:
@@ -172,3 +127,26 @@ jobs:
           path: |
             output/manifest.json
             output/manifest.json.sigstore.json
+
+      - name: Run verification tests
+        run: npm run test:run
+  quality-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install Secure Node Dependencies
+        run: npm ci
+        env:
+          CLOUDSMITH_AUTH_TOKEN: ${{ secrets.CLOUDSMITH_AUTH_TOKEN }} # 👈 Injects token securely into memory on the fly
+
+      - name: Run tests
+        run: npm run test:run
