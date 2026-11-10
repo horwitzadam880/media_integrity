@@ -130,23 +130,3 @@ jobs:
 
       - name: Run verification tests
         run: npm run test:run
-  quality-checks:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-
-      - name: Install Secure Node Dependencies
-        run: npm ci
-        env:
-          CLOUDSMITH_AUTH_TOKEN: ${{ secrets.CLOUDSMITH_AUTH_TOKEN }} # 👈 Injects token securely into memory on the fly
-
-      - name: Run tests
-        run: npm run test:run
