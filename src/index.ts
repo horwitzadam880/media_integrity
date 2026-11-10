@@ -214,8 +214,8 @@ async function main() {
 
   await page.waitForTimeout(randomPause(2, 5));
 
-  await passwordInput.fill(rawLinkPassword);
-
+  await passwordInput.pressSequentially(rawLinkPassword, { delay: 100 });
+  
   await page.waitForTimeout(randomPause(1, 2));
 
   await submitButton.click();
