@@ -215,6 +215,18 @@ export async function processMedia(
     path.join(mediaDir, "audio_track2.m4a"),
   ];
 
+  const extractLipSyncingArgs = [
+  "-loglevel", "debug",
+  "-ss", "00:35:43",          
+  "-i", finalCombinedPath,
+  "-t", "4",
+  "-c:v", "libx264",               
+  "-crf", "18", 
+  "-c:a", "aac",
+  "-map_metadata", "0",      
+  path.join(mediaDir, "leona.mp4"),
+];
+
   try {
     console.log("Starting master multi-track download pass...");
     await runFFmpeg(masterArgs, logFilePath);
@@ -227,6 +239,9 @@ export async function processMedia(
 
     console.log("Extracting isolated audio track 2...");
     await runFFmpeg(extractAudio2Args, logFilePath);
+
+    console.log("Extracting partial 'what should i charge him with?' segment...");
+    await runFFmpeg(extractLipSyncingArgs, logFilePath);
 
     console.log("All forensic processing stages completed successfully.");
     return true;
@@ -417,23 +432,11 @@ export const hashDirectory = async (
   return result;
 };
 
-export const extractSegmentNum = (url: string): number => {
-  const match = /segment_num=(\d+)/.exec(url);
-  if (!match) throw new Error(`No segment_num in URL: ${url}`);
-  return parseInt(match[1]);
-};
-
 export const parseSegmentUrls = (m3u8Body: string): string[] =>
   m3u8Body
     .split("\n")
     .filter((line) => line.startsWith("https://"))
     .map((line) => line.trim());
-
-export interface Segment {
-  segment: number;
-  status: "complete" | "downloading" | "error" | "initial";
-  url: string;
-}
 
 export async function getDropboxMetadata(url: string, dropboxToken: string) {
   return fetch(
